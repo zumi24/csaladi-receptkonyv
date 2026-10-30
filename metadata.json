@@ -1,0 +1,6 @@
+{
+  "name": "Recept Adatbázis",
+  "description": "Webes receptnyilvántartó és menedzser rendszer receptek böngészéséhez, intelligens adagkalkulációhoz és Raspberry Pi szinkronizációhoz.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
