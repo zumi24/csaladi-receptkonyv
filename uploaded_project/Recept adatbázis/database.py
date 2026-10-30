@@ -9,7 +9,8 @@ import sqlite3
 import json
 from werkzeug.security import generate_password_hash
 
-DB_NAME = "receptek.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_NAME = os.path.join(BASE_DIR, "receptek.db")
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)

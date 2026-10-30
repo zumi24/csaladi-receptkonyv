@@ -12,13 +12,19 @@ except ImportError:
 
 import database
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static")
+)
 app.secret_key = "csaladi_titkos_receptkonyv_kulcs_123"
 
 if CORS:
     CORS(app)
 
-UPLOAD_FOLDER = os.path.join("static", "kepek")
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "kepek")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -611,4 +617,4 @@ def api_export_json():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=True)
