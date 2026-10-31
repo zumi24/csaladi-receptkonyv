@@ -538,7 +538,11 @@ export default function App() {
       setSmartImporterOpen(false);
       setIsEditing(true);
     } catch (err: any) {
-      setExtractError(err.message || 'Hiba történt a recept kinyerése közben.');
+      const msg = err.message || 'Hiba történt a recept kinyerése közben.';
+      setExtractError(msg);
+      if (msg.includes('kulcs') || msg.includes('szkennelt') || msg.includes('Gemini')) {
+        setIsApiKeyBoxOpen(true);
+      }
     } finally {
       setIsExtracting(false);
     }
@@ -2037,19 +2041,19 @@ export default function App() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.6.zip')}
+                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.7.zip')}
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>ZIP Letöltése (v1.0.6)</span>
+                      <span>ZIP Letöltése (v1.0.7)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.6.tar.gz')}
+                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.7.tar.gz')}
                       className="px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>tar.gz (v1.0.6 Linuxhoz)</span>
+                      <span>tar.gz (v1.0.7 Linuxhoz)</span>
                     </button>
                     <button
                       type="button"
@@ -3332,9 +3336,23 @@ export default function App() {
                           type="button"
                           onClick={handleSaveApiKey}
                           disabled={isSavingApiKey}
-                          className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shrink-0 shadow-2xs"
+                          className="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shrink-0 shadow-2xs"
                         >
                           {isSavingApiKey ? 'Mentés...' : 'Mentés a Pi-re'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleSaveApiKey();
+                            setTimeout(() => {
+                              handleExtractRecipe();
+                            }, 500);
+                          }}
+                          disabled={isSavingApiKey || isExtracting}
+                          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shrink-0 shadow-2xs flex items-center gap-1.5"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Mentés & Beolvasás Újra</span>
                         </button>
                       </div>
                     </div>

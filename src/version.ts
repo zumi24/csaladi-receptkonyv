@@ -2,10 +2,20 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.6';
+export const APP_VERSION = 'v1.0.7';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.7',
+    title: 'Offline OCR Szkennelt PDF/Kép Motor & Intelligens Kulcsmentő',
+    features: [
+      'Beépített helyi Tesseract OCR motor magyar nyelv támogatással a szkennelt PDF-ekhez és fotókhoz kulcs nélkül',
+      'Automatikus beágyazott képkinyerő a szkennelt PDF dokumentumokból',
+      'Azonnali 1-kattintásos ingyenes Google Gemini API kulcsmentő és újraolvasó a hibaüzenetből',
+      'Kettős feldolgozó logika: Offline OCR (kulcs nélkül) + Gemini AI (kulccsal, maximális pontosság)'
+    ]
+  },
   {
     version: 'v1.0.6',
     title: 'Közvetlen Letöltési Motor & Vágólap Telepítő',

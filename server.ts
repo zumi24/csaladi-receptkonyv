@@ -315,30 +315,30 @@ async function startServer() {
 
   // API to download the complete Raspberry Pi package as ZIP
   app.get('/api/download-pi-package', (_req, res) => {
-    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.zip');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.zip');
-    const finalPath = fs.existsSync(zipPath) ? zipPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.zip'));
+    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.7.zip');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.zip');
+    const finalPath = fs.existsSync(zipPath) ? zipPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.zip'));
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A ZIP csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.6.zip');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.7.zip');
   });
 
   // API to download the complete Raspberry Pi package as tar.gz
   app.get('/api/download-pi-tar', (_req, res) => {
-    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.tar.gz');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz');
-    const finalPath = fs.existsSync(tarPath) ? tarPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.tar.gz'));
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.7.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.tar.gz');
+    const finalPath = fs.existsSync(tarPath) ? tarPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz'));
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A tar.gz csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.6.tar.gz');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.7.tar.gz');
   });
 
   // API to fetch base64 tar.gz package (immune to iframe download blocks)
   app.get('/api/package-base64', (_req, res) => {
-    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.tar.gz');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz');
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.7.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.tar.gz');
     const finalPath = fs.existsSync(tarPath) ? tarPath : fallbackPath;
     if (!fs.existsSync(finalPath)) {
       return res.status(404).json({ error: 'A csomag nem található' });
@@ -347,7 +347,7 @@ async function startServer() {
     const base64 = buffer.toString('base64');
     return res.json({
       success: true,
-      filename: 'recept_adatbazis_v1.0.6.tar.gz',
+      filename: 'recept_adatbazis_v1.0.7.tar.gz',
       size: buffer.length,
       base64
     });

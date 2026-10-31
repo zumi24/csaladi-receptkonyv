@@ -216,6 +216,48 @@ export function extractBasicHtmlRecipe(html: string, sourceUrl: string): any | n
   return null;
 }
 
+// Helper to extract embedded JPEG images from PDF buffer
+export function extractImagesFromPdfBuffer(buffer: Buffer): Buffer[] {
+  const images: Buffer[] = [];
+  let i = 0;
+  while (i < buffer.length - 3) {
+    if (buffer[i] === 0xFF && buffer[i + 1] === 0xD8 && buffer[i + 2] === 0xFF) {
+      const start = i;
+      let end = -1;
+      for (let j = start + 3; j < buffer.length - 1; j++) {
+        if (buffer[j] === 0xFF && buffer[j + 1] === 0xD9) {
+          end = j + 2;
+          break;
+        }
+      }
+      if (end !== -1 && (end - start) > 1024) {
+        images.push(buffer.subarray(start, end));
+        i = end;
+        continue;
+      }
+    }
+    i++;
+  }
+  return images;
+}
+
+// Helper to run offline Tesseract OCR on image buffer
+export async function runOfflineOcr(imageBuffer: Buffer): Promise<string> {
+  try {
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker(['hun', 'eng']);
+    try {
+      const ret = await worker.recognize(imageBuffer);
+      return ret.data.text || '';
+    } finally {
+      await worker.terminate();
+    }
+  } catch (err: any) {
+    console.warn('[Offline OCR Warning]', err.message);
+    return '';
+  }
+}
+
 // Intelligent Hungarian text parser for offline recipes and PDFs
 export function parseRecipeFromHungarianText(text: string): {
   title: string;
@@ -228,6 +270,7 @@ export function parseRecipeFromHungarianText(text: string): {
   tags: string[];
   ingredients: Array<{ id: string; name: string; amount: number; unit: string }>;
   steps: Array<{ stepNumber: number; instruction: string }>;
+  imageUrl?: string;
 } {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length === 0) {
@@ -447,7 +490,34 @@ export async function extractRecipeCore(payload: { type: string; content: string
       return { recipe: parsed, extractedImages: [], hasPdfImage: false };
     }
 
-    throw new Error('Ez a PDF egy szkennelt kép (nem tartalmaz szöveges réteget). A képi szkenneléshez Google Gemini API kulcs szükséges a felületen vagy a .env fájlban. A Google Gemini API 100%-ban INGYENES és bankkártya nélkül igényelhető az aistudio.google.com/apikey oldalon!');
+    // 3. Try offline Tesseract OCR if no Gemini API key is configured
+    console.log('[Offline OCR] Szkennelt PDF észlelve, helyi OCR szövegfelismerés indítása...');
+    try {
+      const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+      const pdfBuffer = Buffer.from(cleanBase64, 'base64');
+      const embeddedImages = extractImagesFromPdfBuffer(pdfBuffer);
+      if (embeddedImages.length > 0) {
+        embeddedImages.sort((a, b) => b.length - a.length);
+        const bestImage = embeddedImages[0];
+        console.log(`[Offline OCR] Kép észlelve a PDF-ben (${Math.round(bestImage.length / 1024)} KB), Tesseract OCR futtatása...`);
+        const ocrText = await runOfflineOcr(bestImage);
+        if (ocrText && ocrText.trim().length > 15) {
+          console.log(`[Offline OCR] Sikeres PDF szövegfelismerés (${ocrText.length} karakter)!`);
+          const parsedRecipe = parseRecipeFromHungarianText(ocrText);
+          const imgBase64 = `data:image/jpeg;base64,${bestImage.toString('base64')}`;
+          parsedRecipe.imageUrl = imgBase64;
+          return {
+            recipe: parsedRecipe,
+            extractedImages: [imgBase64],
+            hasPdfImage: true
+          };
+        }
+      }
+    } catch (ocrErr: any) {
+      console.warn('[Offline OCR Warning]', ocrErr.message);
+    }
+
+    throw new Error('Ez a PDF egy szkennelt kép (nem tartalmaz szöveges réteget). A beolvasáshoz használd az ingyenes Google Gemini API kulcsot az alábbi kinyíló mezőben! (100%-ban INGYENES és bankkártya nélkül igényelhető az aistudio.google.com/apikey oldalon).');
   }
 
   if (type === 'text') {
@@ -470,8 +540,10 @@ export async function extractRecipeCore(payload: { type: string; content: string
   }
 
   if (type === 'image') {
+    const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+    const imgBuffer = Buffer.from(cleanBase64, 'base64');
+
     if (activeAi) {
-      const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
       const response = await activeAi.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: [
@@ -483,7 +555,26 @@ export async function extractRecipeCore(payload: { type: string; content: string
       const parsed = JSON.parse(response.text || '{}');
       return { recipe: parsed, extractedImages: [content], hasPdfImage: false };
     }
-    throw new Error('A fényképek mesterséges intelligenciával történő beolvasásához ingyenes Google Gemini API kulcs szükséges (GEMINI_API_KEY). A kulcs 100% ingyenes az aistudio.google.com/apikey oldalon!');
+
+    // Try offline Tesseract OCR if no Gemini AI key is configured
+    console.log('[Offline OCR] Kép észlelve, helyi OCR szövegfelismerés indítása...');
+    try {
+      const ocrText = await runOfflineOcr(imgBuffer);
+      if (ocrText && ocrText.trim().length > 15) {
+        console.log(`[Offline OCR] Sikeres fotó szövegfelismerés (${ocrText.length} karakter)!`);
+        const parsedRecipe = parseRecipeFromHungarianText(ocrText);
+        parsedRecipe.imageUrl = content;
+        return {
+          recipe: parsedRecipe,
+          extractedImages: [content],
+          hasPdfImage: false
+        };
+      }
+    } catch (ocrErr: any) {
+      console.warn('[Offline OCR Image Warning]', ocrErr.message);
+    }
+
+    throw new Error('A fénykép szövegének automatikus felismeréséhez add meg az ingyenes Google Gemini API kulcsot a lenti dobozban! (100%-ban INGYENES az aistudio.google.com/apikey oldalon).');
   }
 
   throw new Error(`A(z) ${type} típus feldolgozása nem sikerült.`);
