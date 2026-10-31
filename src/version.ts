@@ -2,10 +2,20 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.9';
+export const APP_VERSION = 'v1.0.10';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.10',
+    title: 'Natív Rendszer Nyomtatóablak & Élő Előnézet',
+    features: [
+      'Alapértelmezett rendszer nyomtatóválasztó ablak (printer selection dialog & print preview) biztosítása',
+      'Élő lapelőnézet közvetlenül a párbeszédablakban a nyomtatás előtt',
+      'DOM és CSS szülőelem-leválasztás: a nyomtatási sablon függetlenítésével garantált a nyomtatóablak megnyílása',
+      'Iframe és Raspberry Pi kompatibilis közvetlen nyomtatáskezelő'
+    ]
+  },
   {
     version: 'v1.0.9',
     title: 'Közvetlen & Megbízható Nyomtatási Motor (Iframe + Új Lap)',

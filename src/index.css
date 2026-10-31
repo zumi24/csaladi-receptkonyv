@@ -1,17 +1,13 @@
 @import "tailwindcss";
 
 @media print {
-  /* Hide everything inside #root except the dedicated printable recipe container */
-  #root > *:not(#printable-recipe-container),
-  header,
-  nav,
-  video,
-  iframe:not(#recipe-print-iframe),
-  button,
-  .no-print {
+  /* Hide the entire interactive web app on print */
+  .no-print,
+  #app-root-container {
     display: none !important;
   }
 
+  /* Show ONLY the clean, essential printable recipe sheet */
   #printable-recipe-container {
     display: block !important;
     visibility: visible !important;
@@ -19,13 +15,12 @@
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    background: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    color: #111827 !important;
   }
 
   #printable-recipe-container * {
     visibility: visible !important;
-    color: black !important;
     box-shadow: none !important;
     text-shadow: none !important;
   }
