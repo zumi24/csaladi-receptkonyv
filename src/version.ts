@@ -2,10 +2,20 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.5';
+export const APP_VERSION = 'v1.0.6';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.6',
+    title: 'Közvetlen Letöltési Motor & Vágólap Telepítő',
+    features: [
+      'Új letöltési motor Data URL és Base64 támogatással az iframe blokkolások elkerülésére',
+      'Közvetlen szerver- és kódmásoló panel a felületen (server.ts és recipeExtractor.ts)',
+      '100% offline, letöltés nélküli 1-másodperces javítóparancs a Raspberry Pi terminálhoz',
+      'Drasztikusan optimalizált, pehelykönnyű (<250 KB) telepítőcsomag méret'
+    ]
+  },
   {
     version: 'v1.0.5',
     title: 'Szerver Port Fix & Fejlesztői Környezet Stabilitás',

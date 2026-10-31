@@ -220,9 +220,78 @@ export default function App() {
     }
   };
 
+  // State for in-app direct source code viewer & clipboard copier
+  const [viewCodeFile, setViewCodeFile] = useState<string | null>(null);
+  const [viewCodeContent, setViewCodeContent] = useState<string>('');
+  const [isLoadingCode, setIsLoadingCode] = useState(false);
+  const [isGeneratingSelfExtractor, setIsGeneratingSelfExtractor] = useState(false);
+
+  const handleLoadSourceCode = async (file: string) => {
+    setIsLoadingCode(true);
+    setViewCodeFile(file);
+    try {
+      const res = await fetch(`/api/get-source-code?file=${file}`);
+      const data = await res.json();
+      if (data.success && data.content) {
+        setViewCodeContent(data.content);
+      } else {
+        setViewCodeContent('A fájl tartalma nem érhető el.');
+      }
+    } catch (err: any) {
+      setViewCodeContent('Hiba a fájl betöltésekor: ' + (err.message || 'Hálózati hiba'));
+    } finally {
+      setIsLoadingCode(false);
+    }
+  };
+
+  const handleCopySelfExtractor = async () => {
+    setIsGeneratingSelfExtractor(true);
+    try {
+      showToast('Önkicsomagoló szkript előkészítése...', 'info');
+      const res = await fetch('/api/package-base64');
+      const data = await res.json();
+      if (!data.success || !data.base64) throw new Error('A csomag nem található.');
+      const cmd = `mkdir -p /home/pi/recept_adatbazis && cd /home/pi/recept_adatbazis && base64 -d << 'EOF' | tar -xzf -\n${data.base64}\nEOF\nnpm run preview -- --host 0.0.0.0 --port 5000`;
+      await navigator.clipboard.writeText(cmd);
+      showToast('✅ A teljes telepítőcsomag kimásolva a vágólapra! Illeszd be a Pi SSH termináljába.', 'success');
+    } catch (err: any) {
+      showToast('Nem sikerült kimásolni: ' + err.message, 'warning');
+    } finally {
+      setIsGeneratingSelfExtractor(false);
+    }
+  };
+
   const downloadFileBlob = async (endpoint: string, filename: string) => {
     try {
       showToast('Letöltés előkészítése...', 'info');
+      // If it's the tar.gz package, try fetching base64 directly
+      if (endpoint.includes('download-pi-tar') || filename.endsWith('.tar.gz')) {
+        try {
+          const resJson = await fetch('/api/package-base64');
+          if (resJson.ok) {
+            const data = await resJson.json();
+            if (data.success && data.base64) {
+              const byteCharacters = atob(data.base64);
+              const byteNumbers = new Uint8Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const blob = new Blob([byteNumbers], { type: 'application/gzip' });
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
+              showToast('A tar.gz letöltése sikeresen elindult!', 'success');
+              return;
+            }
+          }
+        } catch {}
+      }
+
       const res = await fetch(endpoint);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
@@ -237,17 +306,7 @@ export default function App() {
       showToast('A csomag letöltése sikeresen elindult!', 'success');
     } catch (e: any) {
       console.warn('Blob download error:', e);
-      try {
-        const fallbackUrl = `/${filename}`;
-        const link = document.createElement('a');
-        link.href = fallbackUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch {
-        showToast('Hiba a letöltés során: ' + e.message, 'warning');
-      }
+      showToast('Az előnézeti ablak böngészővédelme blokkolta a letöltést. Használd a sárga dobozban lévő azonnali parancsot vagy a Kódmásolót!', 'warning');
     }
   };
 
@@ -1978,77 +2037,117 @@ export default function App() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.5.zip')}
+                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.6.zip')}
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>ZIP Letöltése (v1.0.5)</span>
+                      <span>ZIP Letöltése (v1.0.6)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.5.tar.gz')}
+                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.6.tar.gz')}
                       className="px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>tar.gz (v1.0.5 Linuxhoz)</span>
+                      <span>tar.gz (v1.0.6 Linuxhoz)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopySelfExtractor}
+                      disabled={isGeneratingSelfExtractor}
+                      className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{isGeneratingSelfExtractor ? 'Generálás...' : '📋 Teljes Csomag Másolása (Base64)'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Instant 1-line Fix for Pi Terminal (No Download Required) */}
-                <div className="p-4 bg-amber-50/90 border-2 border-amber-300 rounded-2xl space-y-2">
+                {/* Explanation note if browser blocks downloads */}
+                <div className="p-3 bg-amber-500/10 border border-amber-300/80 rounded-xl flex items-start gap-2.5 text-xs text-amber-950">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    <strong className="font-bold">Miért írta a böngésző, hogy „a webhelyhez nem lehet hozzáférni”?</strong>
+                    <br />
+                    Az előnézeti fejlesztői keret (iframe sandbox) biztonsági okokból blokkolja a böngészőn belüli fájlletöltéseket és a külső curl kéréseket. 
+                    <strong> Ezért nem kell semmit a böngészőből letöltened!</strong> Használd az alábbi 2 garantáltan működő módszer egyikét:
+                  </div>
+                </div>
+
+                {/* METHOD 1: Instant 1-line Sed Fix for Pi Terminal */}
+                <div className="p-4 bg-linear-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-400 rounded-2xl space-y-2 shadow-xs">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
                       <Sparkles className="w-4 h-4 text-amber-600" />
-                      <span>⚡ AZONNALI JAVÍTÁS A PI-N (Letöltés és másolás nélkül!):</span>
+                      <span>🥇 1. MÓDSZER: AZONNALI JAVÍTÁS (Ajánlott! Nem kell semmit letölteni):</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
-                        const cmd = `sed -i "s|from './recipeExtractor';|from './recipeExtractor.ts';|g" /home/pi/recept_adatbazis/server.ts && npm run preview -- --host 0.0.0.0 --port 5000`;
+                        const cmd = `sed -i "s|recipeExtractor'|recipeExtractor.ts'|g" /home/pi/recept_adatbazis/server.ts && cd /home/pi/recept_adatbazis && npm run preview -- --host 0.0.0.0 --port 5000`;
                         navigator.clipboard.writeText(cmd);
                         showToast('Parancs kimásolva! Illeszd be a Pi termináljába.', 'success');
                       }}
-                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                     >
-                      <Copy className="w-3 h-3" />
+                      <Copy className="w-3.5 h-3.5" />
                       <span>Parancs másolása</span>
                     </button>
                   </div>
-                  <p className="text-[11px] text-amber-800 leading-relaxed">
-                    Ha a Pi terminálban az <code>ERR_MODULE_NOT_FOUND</code> hibát kapta, nem kell újra letöltenie! Csak illessze be ezt az egyetlen parancsot a Raspberry Pi-n, és a szerver azonnal hiba nélkül elindul:
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    A Raspberry Pi-n már rajta vannak a fájlok, mindössze a Node 22 modulbetöltési hibája miatt állt le. Illeszd be ezt az egyetlen parancsot a Pi terminálba:
                   </p>
-                  <pre className="text-[11px] font-mono bg-white p-2.5 rounded-xl border border-amber-200 overflow-x-auto text-amber-950 select-all whitespace-pre-wrap break-all font-bold">
-                    sed -i "s|from './recipeExtractor';|from './recipeExtractor.ts';|g" /home/pi/recept_adatbazis/server.ts && npm run preview -- --host 0.0.0.0 --port 5000
+                  <pre className="text-xs font-mono bg-white p-3 rounded-xl border border-amber-300 overflow-x-auto text-amber-950 select-all whitespace-pre-wrap break-all font-bold">
+                    sed -i "s|recipeExtractor'|recipeExtractor.ts'|g" /home/pi/recept_adatbazis/server.ts && cd /home/pi/recept_adatbazis && npm run preview -- --host 0.0.0.0 --port 5000
                   </pre>
                 </div>
 
-                {/* Direct One-Liner Terminal Command for Raspberry Pi */}
-                <div className="p-4 bg-stone-900 text-stone-100 rounded-xl space-y-2 border border-stone-800">
-                  <div className="flex items-center justify-between gap-2">
+                {/* METHOD 2: Direct In-App File Viewer & Copier */}
+                <div className="p-4 bg-stone-900 text-stone-100 rounded-2xl space-y-3 border border-stone-800 shadow-md">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
-                      <Server className="w-4 h-4" />
-                      <span>Közvetlen letöltés a Pi terminálban (GitHub nélkül!):</span>
+                      <FileCode className="w-4 h-4" />
+                      <span>🥈 2. MÓDSZER: Fájlok Közvetlen Megtekintése és Másolása</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cmd = `cd /home/pi && curl -o recept_csomag.tar.gz -L "${window.location.origin}/api/download-pi-tar" && mkdir -p recept_adatbazis && tar -xzf recept_csomag.tar.gz -C recept_adatbazis && cd recept_adatbazis && chmod +x setup_pi.sh && ./setup_pi.sh`;
-                        navigator.clipboard.writeText(cmd);
-                        showToast('Parancs másolva a vágólapra! Illeszd be a Pi termináljába.', 'success');
-                      }}
-                      className="px-2.5 py-1 bg-stone-800 hover:bg-stone-700 text-stone-200 text-[11px] font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Copy className="w-3 h-3 text-amber-400" />
-                      <span>Parancs másolása</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(['server.ts', 'recipeExtractor.ts', 'package.json', 'setup_pi.sh'] as const).map((fname) => (
+                        <button
+                          key={fname}
+                          type="button"
+                          onClick={() => handleLoadSourceCode(fname)}
+                          className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-colors cursor-pointer border ${
+                            viewCodeFile === fname
+                              ? 'bg-amber-500 text-stone-950 font-bold border-amber-400'
+                              : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
+                          }`}
+                        >
+                          {fname}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-[11px] text-stone-400">
-                    Nem kell GitHub token vagy pendrive! Csak nyiss egy SSH terminált a Pi-n, és másold be ezt az egyetlen parancssort:
-                  </p>
-                  <pre className="text-[11px] font-mono bg-black/50 p-2.5 rounded-lg overflow-x-auto text-amber-200 select-all whitespace-pre-wrap break-all">
-                    cd /home/pi && curl -o recept_csomag.tar.gz -L "{typeof window !== 'undefined' ? window.location.origin : ''}/api/download-pi-tar" && mkdir -p recept_adatbazis && tar -xzf recept_csomag.tar.gz -C recept_adatbazis && cd recept_adatbazis && chmod +x setup_pi.sh && ./setup_pi.sh
-                  </pre>
+
+                  {viewCodeFile && (
+                    <div className="space-y-2 pt-2 border-t border-stone-800">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-mono text-amber-300">{viewCodeFile} tartalma:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(viewCodeContent);
+                            showToast(`"${viewCodeFile}" kódja kimásolva a vágólapra!`, 'success');
+                          }}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Kód másolása</span>
+                        </button>
+                      </div>
+                      <pre className="text-[11px] font-mono bg-black/60 p-3 rounded-xl max-h-64 overflow-y-auto text-stone-200 select-all whitespace-pre leading-relaxed border border-stone-800">
+                        {isLoadingCode ? 'Betöltés...' : viewCodeContent}
+                      </pre>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

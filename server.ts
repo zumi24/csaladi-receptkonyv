@@ -315,24 +315,57 @@ async function startServer() {
 
   // API to download the complete Raspberry Pi package as ZIP
   app.get('/api/download-pi-package', (_req, res) => {
-    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.zip');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.zip');
-    const finalPath = fs.existsSync(zipPath) ? zipPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.zip'));
+    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.zip');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.zip');
+    const finalPath = fs.existsSync(zipPath) ? zipPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.zip'));
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A ZIP csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.5.zip');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.6.zip');
   });
 
   // API to download the complete Raspberry Pi package as tar.gz
   app.get('/api/download-pi-tar', (_req, res) => {
-    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.tar.gz');
-    const finalPath = fs.existsSync(tarPath) ? tarPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.tar.gz'));
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz');
+    const finalPath = fs.existsSync(tarPath) ? tarPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.tar.gz'));
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A tar.gz csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.5.tar.gz');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.6.tar.gz');
+  });
+
+  // API to fetch base64 tar.gz package (immune to iframe download blocks)
+  app.get('/api/package-base64', (_req, res) => {
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.6.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz');
+    const finalPath = fs.existsSync(tarPath) ? tarPath : fallbackPath;
+    if (!fs.existsSync(finalPath)) {
+      return res.status(404).json({ error: 'A csomag nem található' });
+    }
+    const buffer = fs.readFileSync(finalPath);
+    const base64 = buffer.toString('base64');
+    return res.json({
+      success: true,
+      filename: 'recept_adatbazis_v1.0.6.tar.gz',
+      size: buffer.length,
+      base64
+    });
+  });
+
+  // API to fetch raw source code of key project files for direct clipboard copying
+  app.get('/api/get-source-code', (req, res) => {
+    const allowed = ['server.ts', 'recipeExtractor.ts', 'package.json', 'setup_pi.sh', 'receptkonyv.service'];
+    const file = req.query.file as string;
+    if (!file || !allowed.includes(file)) {
+      return res.status(400).json({ error: 'Fájl nem engedélyezett' });
+    }
+    const fullPath = path.resolve(process.cwd(), file);
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'Fájl nem található' });
+    }
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    return res.json({ success: true, file, content });
   });
 
   // API to save Gemini API key directly from UI to .env file
