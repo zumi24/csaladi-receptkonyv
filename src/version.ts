@@ -2,10 +2,19 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.3';
+export const APP_VERSION = 'v1.0.4';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.4',
+    title: 'Biztonságos Iframe Blob Letöltés & 1-soros Pi Fix',
+    features: [
+      'Közvetlen JavaScript Blob letöltés az előnézeti iframe-ből a böngészési blokkolás elkerülésére',
+      'Statikus / közvetlen letöltési linkek és 1-soros sed parancs a Pi-n lévő import hiba azonnali javításához',
+      'Node 22 szigorú ES modul kompatibilitás ellenőrizve'
+    ]
+  },
   {
     version: 'v1.0.3',
     title: 'Node.js 22 ESM Modulbetöltési Javítás',
