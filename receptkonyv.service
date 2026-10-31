@@ -1,0 +1,16 @@
+[Unit]
+Description=Csaladi Receptkonyv Web Alkalmazas
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/recept_adatbazis
+ExecStart=/bin/bash -lc "cd /home/pi/recept_adatbazis && npm run preview -- --host 0.0.0.0 --port 5000"
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
