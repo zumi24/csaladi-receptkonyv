@@ -26,7 +26,7 @@ After=network.target
 Type=simple
 User=$AKTUALIS_USER
 WorkingDirectory=$PROJEKT_MAPPA
-ExecStart=/bin/bash -lc "cd $PROJEKT_MAPPA && npm run preview -- --host 0.0.0.0 --port 5000"
+ExecStart=/bin/bash -lc "cd $PROJEKT_MAPPA && PORT=5000 npm start"
 Restart=always
 RestartSec=5
 StandardOutput=journal

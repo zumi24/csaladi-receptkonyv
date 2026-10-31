@@ -7,18 +7,193 @@ import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
+const ai = process.env.GEMINI_API_KEY
+  ? new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    })
+  : null;
+
+// Helper to extract Schema.org JSON-LD Recipe from HTML
+function tryExtractSchemaOrgRecipe(html: string, sourceUrl: string): any | null {
+  try {
+    const jsonLdRegex = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    while ((match = jsonLdRegex.exec(html)) !== null) {
+      try {
+        const jsonContent = match[1].trim();
+        const parsed = JSON.parse(jsonContent);
+
+        // Can be a single object, an array, or have "@graph"
+        const items = Array.isArray(parsed)
+          ? parsed
+          : (parsed['@graph'] && Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed]);
+
+        for (const item of items) {
+          const type = item['@type'];
+          const isRecipe = type === 'Recipe' || (Array.isArray(type) && type.includes('Recipe'));
+          if (isRecipe) {
+            const title = item.name || item.headline || '';
+            const description = item.description || '';
+
+            // Extract image URL
+            let imageUrl = '';
+            if (typeof item.image === 'string') {
+              imageUrl = item.image;
+            } else if (Array.isArray(item.image) && item.image.length > 0) {
+              imageUrl = typeof item.image[0] === 'string' ? item.image[0] : item.image[0]?.url || '';
+            } else if (item.image && typeof item.image === 'object') {
+              imageUrl = item.image.url || '';
+            }
+
+            // Resolve relative image URL if needed
+            if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
+              try {
+                imageUrl = new URL(imageUrl, sourceUrl).href;
+              } catch {}
+            }
+
+            // ISO 8601 duration parser (PT30M, PT1H15M, P0DT0H45M)
+            const parseDuration = (dur: any): number => {
+              if (typeof dur !== 'string') return 0;
+              const hMatch = dur.match(/(\d+)\s*H/i);
+              const mMatch = dur.match(/(\d+)\s*M/i);
+              const hours = hMatch ? parseInt(hMatch[1], 10) : 0;
+              const mins = mMatch ? parseInt(mMatch[1], 10) : 0;
+              return (hours * 60) + mins;
+            };
+
+            const prepTimeMinutes = parseDuration(item.prepTime) || 15;
+            const cookTimeMinutes = parseDuration(item.cookTime) || (parseDuration(item.totalTime) ? Math.max(0, parseDuration(item.totalTime) - prepTimeMinutes) : 30);
+
+            // Servings
+            let servings = 4;
+            if (item.recipeYield) {
+              const yStr = String(item.recipeYield);
+              const yMatch = yStr.match(/\d+/);
+              if (yMatch) servings = parseInt(yMatch[0], 10);
+            }
+
+            // Category
+            let category = 'Főételek';
+            const catRaw = Array.isArray(item.recipeCategory) ? item.recipeCategory.join(' ') : String(item.recipeCategory || '');
+            const catLower = catRaw.toLowerCase();
+            if (catLower.includes('leves') || catLower.includes('soup')) category = 'Levesek';
+            else if (catLower.includes('desszert') || catLower.includes('sütemény') || catLower.includes('torta') || catLower.includes('dessert') || catLower.includes('cake')) category = 'Desszertek';
+            else if (catLower.includes('pék') || catLower.includes('kenyér') || catLower.includes('kifli') || catLower.includes('bread')) category = 'Péksütemények';
+            else if (catLower.includes('saláta') || catLower.includes('salad')) category = 'Saláták';
+            else if (catRaw.trim()) category = catRaw.trim();
+
+            // Extract ingredients
+            const rawIngredients = item.recipeIngredient || item.ingredients || [];
+            const ingredients: any[] = [];
+            if (Array.isArray(rawIngredients)) {
+              rawIngredients.forEach((ing: any, idx: number) => {
+                if (typeof ing === 'string' && ing.trim()) {
+                  const ingText = ing.trim();
+                  // Try to parse amount, unit, name
+                  const matchIng = ingText.match(/^([\d.,\/\s]+)\s*(kg|dkg|g|ml|dl|l|liter|ek|tk|kávéskanál|evőkanál|csipet|db|gerezd|fej|csomag|tasak|szem|bögre|pohár|szelet|marék)?\s*(.*)$/i);
+                  if (matchIng && matchIng[3]) {
+                    const numRaw = matchIng[1].replace(',', '.').trim();
+                    const amount = parseFloat(numRaw) || 1;
+                    const unit = matchIng[2] || 'db';
+                    const name = matchIng[3].trim().replace(/^[-–—]\s*/, '');
+                    ingredients.push({
+                      id: `ing-${Date.now()}-${idx}`,
+                      name: name || ingText,
+                      amount,
+                      unit
+                    });
+                  } else {
+                    const isIzlesSzerint = ingText.toLowerCase().includes('ízlés szerint');
+                    ingredients.push({
+                      id: `ing-${Date.now()}-${idx}`,
+                      name: ingText,
+                      amount: 1,
+                      unit: isIzlesSzerint ? 'ízlés szerint' : 'adag'
+                    });
+                  }
+                }
+              });
+            }
+
+            // Extract instructions / steps
+            const extractStepTexts = (instructions: any): string[] => {
+              const resList: string[] = [];
+              if (!instructions) return resList;
+              if (typeof instructions === 'string') {
+                return instructions.split(/\r?\n+/).map(s => s.trim()).filter(Boolean);
+              }
+              if (Array.isArray(instructions)) {
+                for (const elem of instructions) {
+                  if (typeof elem === 'string') {
+                    if (elem.trim()) resList.push(elem.trim());
+                  } else if (elem && typeof elem === 'object') {
+                    if (elem.itemListElement) {
+                      resList.push(...extractStepTexts(elem.itemListElement));
+                    } else {
+                      const txt = elem.text || elem.name || elem.description || '';
+                      if (txt.trim()) resList.push(txt.trim());
+                    }
+                  }
+                }
+              }
+              return resList;
+            };
+
+            const stepTexts = extractStepTexts(item.recipeInstructions);
+            const steps = stepTexts.map((text, idx) => ({
+              stepNumber: idx + 1,
+              instruction: text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            }));
+
+            if (title && (ingredients.length > 0 || steps.length > 0)) {
+              return {
+                title: title.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"'),
+                category,
+                description: description ? description.replace(/<[^>]+>/g, ' ').slice(0, 300).trim() : '',
+                prepTimeMinutes,
+                cookTimeMinutes,
+                servings,
+                difficulty: 'Közepes',
+                tags: ['Weboldalról', 'Családi'],
+                ingredients,
+                steps,
+                notes: `Forrás: ${sourceUrl}`,
+                imageUrl
+              };
+            }
+          }
+        }
+      } catch (e) {
+        // Continue searching in next script tag
+      }
     }
+  } catch (err) {
+    console.warn('JSON-LD parse warning:', err);
   }
-});
+  return null;
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+
+  // Parse command line arguments for port (e.g. --port 5000 or -p 5000)
+  const args = process.argv.slice(2);
+  let cliPort: number | null = null;
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--port' || args[i] === '-p') && args[i + 1]) {
+      cliPort = parseInt(args[i + 1], 10);
+    }
+  }
+
+  const isAiStudio = process.env.AISTUDIO === 'true' || !!process.env.DEV_SERVER_PORT || process.cwd().includes('/app/applet');
+  const DEFAULT_PORT = isAiStudio ? 3000 : 5000;
+  const PORT = Number(process.env.PORT) || cliPort || DEFAULT_PORT;
 
   // Accept up to 100MB payloads
   app.use(express.json({ limit: '100mb' }));
@@ -201,17 +376,30 @@ Kimeneti JSON séma:
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept': 'text/html,application/xhtml+xml,application/json'
             },
-            signal: AbortSignal.timeout(8000)
+            signal: AbortSignal.timeout(10000)
           });
           fetchedText = await fetchRes.text();
-          // Remove scripts and style tags to save tokens
-          fetchedText = fetchedText.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
-          fetchedText = fetchedText.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
-          fetchedText = fetchedText.slice(0, 45000); // take first 45k chars
         } catch (fetchErr: any) {
           console.warn('URL fetch error, passing URL directly to model:', fetchErr.message);
           fetchedText = `Webcím: ${content}`;
         }
+
+        // Try direct Schema.org / JSON-LD recipe extraction first!
+        const schemaRecipe = tryExtractSchemaOrgRecipe(fetchedText, content);
+        if (schemaRecipe) {
+          console.log(`[Schema.org] Sikeres közvetlen recept kinyerés: "${schemaRecipe.title}" (${schemaRecipe.ingredients.length} hozzávaló, ${schemaRecipe.steps.length} lépés)`);
+          return res.json({
+            success: true,
+            recipe: schemaRecipe,
+            extractedImages: schemaRecipe.imageUrl ? [schemaRecipe.imageUrl] : [],
+            hasPdfImage: false
+          });
+        }
+
+        // Remove scripts and style tags to save tokens
+        fetchedText = fetchedText.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
+        fetchedText = fetchedText.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
+        fetchedText = fetchedText.slice(0, 45000); // take first 45k chars
 
         parts.push({
           text: `${promptText}\n\nForrás weboldal URL: ${content}\n\nA weboldal tartalma:\n${fetchedText}`
@@ -267,6 +455,16 @@ Kimeneti JSON séma:
         });
       } else {
         return res.status(400).json({ error: 'Invalid extraction type' });
+      }
+
+      // Check if AI is initialized (has GEMINI_API_KEY)
+      if (!ai) {
+        return res.status(400).json({
+          success: false,
+          error: type === 'url'
+            ? 'A megadott weboldal nem tartalmazott szabványos recept-adatot. AI-alapú intelligens értelmezéshez kérlek add meg a GEMINI_API_KEY kulcsot a .env fájlban!'
+            : 'A fényképek és PDF fájlok beolvasásához Google Gemini API kulcs szükséges a .env fájlban (GEMINI_API_KEY=...). A legtöbb weboldalról (pl. Nosalty, Mindmegette) a receptek URL alapján kulcs nélkül is automatikusan beolvashatók!'
+        });
       }
 
       // Robust Multi-Model Fallback & Retry mechanism for 503 / 429 transient spikes
@@ -362,12 +560,18 @@ Kimeneti JSON séma:
     }
   });
 
-  if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.resolve(process.cwd(), 'dist')));
+  const distPath = path.resolve(process.cwd(), 'dist');
+  const distIndex = path.resolve(distPath, 'index.html');
+  const isProductionMode = process.env.NODE_ENV === 'production' || (!isAiStudio && fs.existsSync(distIndex));
+
+  if (isProductionMode && fs.existsSync(distIndex)) {
+    console.log(`[Production] Statikus fájlok kiszolgálása a(z) ${distPath} mappából`);
+    app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(process.cwd(), 'dist', 'index.html'));
+      res.sendFile(distIndex);
     });
   } else {
+    console.log(`[Development] Vite dev szerver middleware csatolva`);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -376,7 +580,7 @@ Kimeneti JSON séma:
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on http://0.0.0.0:${PORT}`);
+    console.log(`🚀 Családi Receptkönyv szerver fut: http://0.0.0.0:${PORT}`);
   });
 }
 

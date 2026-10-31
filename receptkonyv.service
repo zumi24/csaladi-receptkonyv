@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/recept_adatbazis
-ExecStart=/bin/bash -lc "cd /home/pi/recept_adatbazis && npm run preview -- --host 0.0.0.0 --port 5000"
+ExecStart=/bin/bash -lc "cd /home/pi/recept_adatbazis && PORT=5000 npm start"
 Restart=always
 RestartSec=5
 StandardOutput=journal
