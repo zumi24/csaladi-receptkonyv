@@ -54,6 +54,7 @@ import { Recipe, Ingredient, RecipeStep, ShoppingItem, FamilyMember } from './ty
 import { initialRecipes, initialFamilyMembers } from './data/initialRecipes';
 import { APP_VERSION, APP_BUILD_NAME } from './version';
 import { UserGuideModal } from './components/UserGuideModal';
+import { executeRecipePrint } from './utils/printRecipe';
 
 export default function App() {
   // Recipes State with LocalStorage
@@ -158,6 +159,11 @@ export default function App() {
 
   // State for User Guide / Documentation modal
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  // State for Interactive Recipe Print Dialog & Mode
+  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [printRecipe, setPrintRecipe] = useState<Recipe | null>(null);
+  const [printWithImage, setPrintWithImage] = useState(true);
 
   // Dynamic custom categories state
   const defaultCategories = ['Főételek', 'Levesek', 'Desszertek', 'Péksütemények', 'Saláták'];
@@ -1466,8 +1472,21 @@ export default function App() {
                         {recipe.category}
                       </div>
 
-                      {/* Top-Right Badges: Quick Delete + Thumbs Up Likes Counter */}
+                      {/* Top-Right Badges: Quick Print + Quick Delete + Thumbs Up Likes Counter */}
                       <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrintRecipe(recipe);
+                            setPrintWithImage(Boolean(recipe.imageUrl));
+                            setIsPrintDialogOpen(true);
+                          }}
+                          className="p-1.5 bg-white/95 hover:bg-amber-50 text-stone-500 hover:text-amber-700 rounded-full shadow-xs transition-colors cursor-pointer"
+                          title="Recept nyomtatása"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -2041,19 +2060,19 @@ export default function App() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.7.zip')}
+                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.9.zip')}
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>ZIP Letöltése (v1.0.7)</span>
+                      <span>ZIP Letöltése (v1.0.9)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.7.tar.gz')}
+                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.9.tar.gz')}
                       className="px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>tar.gz (v1.0.7 Linuxhoz)</span>
+                      <span>tar.gz (v1.0.9 Linuxhoz)</span>
                     </button>
                     <button
                       type="button"
@@ -2255,9 +2274,13 @@ export default function App() {
                   <span>Főzés Indítása</span>
                 </button>
                 <button
-                  onClick={() => window.print()}
-                  className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-                  title="Nyomtatás"
+                  onClick={() => {
+                    setPrintRecipe(selectedRecipe);
+                    setPrintWithImage(Boolean(selectedRecipe.imageUrl));
+                    setIsPrintDialogOpen(true);
+                  }}
+                  className="p-2 text-stone-500 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                  title="Recept Nyomtatása (Fotóval vagy anélkül)"
                 >
                   <Printer className="w-4 h-4" />
                 </button>
@@ -3649,6 +3672,281 @@ export default function App() {
           setIsEditing(true);
         }}
       />
+
+      {/* ========================================================================= */}
+      {/* INTERACTIVE RECIPE PRINT DIALOG (PHOTO vs NO PHOTO SELECTION) */}
+      {/* ========================================================================= */}
+      {isPrintDialogOpen && printRecipe && (
+        <div className="fixed inset-0 z-70 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150 no-print">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-xs">
+                <Printer className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h3 className="text-lg font-bold text-stone-900">
+                  Recept nyomtatása
+                </h3>
+                <p className="text-xs text-stone-800 font-semibold line-clamp-1">
+                  „{printRecipe.title}”
+                </p>
+                <p className="text-[11px] text-stone-500 leading-relaxed">
+                  A nyomtatás kizárólag a lényeget (hozzávalók, lépések, adagok) tartalmazza. A YouTube videók, gombok és egyéb kezelőelemek nem kerülnek a papírra.
+                </p>
+              </div>
+            </div>
+
+            {/* Print Mode Selector: With or Without Photo */}
+            <div className="space-y-2 pt-2 border-t border-stone-100">
+              <label className="block text-xs font-bold text-stone-700">
+                Hogyan szeretnéd kinyomtatni?
+              </label>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                {/* Option 1: With Photo */}
+                <button
+                  type="button"
+                  onClick={() => setPrintWithImage(true)}
+                  disabled={!printRecipe.imageUrl}
+                  className={`p-3.5 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                    printWithImage && printRecipe.imageUrl
+                      ? 'bg-amber-50/90 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-xs'
+                      : printRecipe.imageUrl
+                      ? 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                      : 'bg-stone-100 border-stone-200 text-stone-400 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      printWithImage && printRecipe.imageUrl ? 'bg-amber-200/80 text-amber-800' : 'bg-stone-100 text-stone-600'
+                    }`}>
+                      <Camera className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1.5">
+                        <span>Nyomtatás ételfotóval</span>
+                        {printWithImage && printRecipe.imageUrl && (
+                          <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded-md font-semibold">Kiválasztva</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        {printRecipe.imageUrl ? 'Szép színes fotóval a recept tetején' : 'Ehhez a recepthez nincs feltöltött fotó'}
+                      </div>
+                    </div>
+                  </div>
+                  {printWithImage && printRecipe.imageUrl && (
+                    <div className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
+                  )}
+                </button>
+
+                {/* Option 2: Without Photo (Eco Text Only) */}
+                <button
+                  type="button"
+                  onClick={() => setPrintWithImage(false)}
+                  className={`p-3.5 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                    !printWithImage || !printRecipe.imageUrl
+                      ? 'bg-amber-50/90 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-xs'
+                      : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      !printWithImage || !printRecipe.imageUrl ? 'bg-amber-200/80 text-amber-800' : 'bg-stone-100 text-stone-600'
+                    }`}>
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1.5">
+                        <span>Nyomtatás fotó nélkül (Gazdaságos)</span>
+                        {(!printWithImage || !printRecipe.imageUrl) && (
+                          <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded-md font-semibold">Kiválasztva</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        Kíméli a tintát/tonert, tiszta, tömör és áttekinthető
+                      </div>
+                    </div>
+                  </div>
+                  {(!printWithImage || !printRecipe.imageUrl) && (
+                    <div className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
+                  )}
+                </button>
+              </div>
+
+              {/* Scaled servings indicator */}
+              <div className="p-2.5 bg-stone-50 border border-stone-200/80 rounded-xl text-[11px] text-stone-600 flex items-center justify-between">
+                <span>Kalkulált adagméret:</span>
+                <span className="font-bold text-stone-900">
+                  {Math.round(printRecipe.servings * (selectedRecipe?.id === printRecipe.id ? servingsMultiplier : 1))} adagra számolva
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="space-y-2 pt-3 border-t border-stone-100">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsPrintDialogOpen(false)}
+                  className="px-4 py-2.5 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer text-center"
+                >
+                  Mégse
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!printRecipe) return;
+                      const mult = selectedRecipe?.id === printRecipe.id ? servingsMultiplier : 1;
+                      executeRecipePrint(printRecipe, printWithImage, mult, 'new-tab');
+                      setIsPrintDialogOpen(false);
+                      showToast('📄 Recept megnyitva új nyomtatási lapon!', 'info');
+                    }}
+                    className="flex-1 sm:flex-none px-3.5 py-2.5 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 border border-stone-200 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Tiszta, letisztult receptoldal megnyitása új lapon azonnali nyomtatással"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-stone-500" />
+                    <span>Megnyitás új lapon</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!printRecipe) return;
+                      const mult = selectedRecipe?.id === printRecipe.id ? servingsMultiplier : 1;
+                      executeRecipePrint(printRecipe, printWithImage, mult, 'direct');
+                      setIsPrintDialogOpen(false);
+                      showToast('🖨️ Nyomtatási feladat kiküldve a nyomtatónak!', 'success');
+                    }}
+                    className="flex-1 sm:flex-none px-4 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Nyomtatás Indítása</span>
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-stone-400 text-center leading-normal">
+                Tipp: A „Nyomtatás Indítása” azonnal megnyitja a gép nyomtatópárbeszédét. Ha a böngésződ blokkolná, a „Megnyitás új lapon” opció garantáltan működik!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DEDICATED CLEAN PRINTABLE RECIPE SHEET (Visible ONLY on print) */}
+      {/* ========================================================================= */}
+      {printRecipe && (
+        <div id="printable-recipe-container" className="hidden print:block font-sans text-black bg-white p-6 leading-normal">
+          {/* Header */}
+          <div className="border-b-2 border-black pb-4 mb-5">
+            <div className="flex items-start justify-between gap-6">
+              <div className="flex-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                  {printRecipe.category} · {printRecipe.difficulty}
+                </div>
+                <h1 className="text-2xl font-black text-black leading-tight">
+                  {printRecipe.title}
+                </h1>
+                {printRecipe.description && (
+                  <p className="text-xs text-stone-700 mt-1.5 italic leading-relaxed">
+                    {printRecipe.description}
+                  </p>
+                )}
+                <div className="flex items-center gap-4 text-xs font-bold text-stone-800 mt-2.5 pt-1">
+                  <span>Előkészítés: {printRecipe.prepTimeMinutes} perc</span>
+                  <span>·</span>
+                  <span>Főzés/Sütés: {printRecipe.cookTimeMinutes} perc</span>
+                  <span>·</span>
+                  <span>Adag: {Math.round(printRecipe.servings * (selectedRecipe?.id === printRecipe.id ? servingsMultiplier : 1))} személyre</span>
+                  {printRecipe.chef && (
+                    <>
+                      <span>·</span>
+                      <span>Szakács: {printRecipe.chef}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Photo if requested */}
+              {printWithImage && printRecipe.imageUrl && (
+                <div className="w-36 h-28 shrink-0 rounded-lg overflow-hidden border border-stone-400">
+                  <img
+                    src={printRecipe.imageUrl}
+                    alt={printRecipe.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Essentials: Ingredients and Steps */}
+          <div className="space-y-6">
+            {/* Ingredients */}
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-wider border-b border-black pb-1 mb-2.5 text-black">
+                Hozzávalók ({Math.round(printRecipe.servings * (selectedRecipe?.id === printRecipe.id ? servingsMultiplier : 1))} adaghoz):
+              </h2>
+              <ul className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
+                {printRecipe.ingredients.map((ing, idx) => {
+                  const mult = selectedRecipe?.id === printRecipe.id ? servingsMultiplier : 1;
+                  const scaled = ing.amount * mult;
+                  const formatted = scaled > 0 ? (scaled % 1 === 0 ? scaled : scaled.toFixed(1)) : '';
+                  return (
+                    <li key={idx} className="flex items-center gap-2 py-0.5 border-b border-dotted border-stone-300">
+                      <span className="w-3 h-3 rounded-xs border border-stone-500 inline-block shrink-0"></span>
+                      <span className="font-bold tabular-nums">
+                        {formatted} {ing.unit}
+                      </span>
+                      <span className="text-black">{ing.name}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            {/* Preparation Steps */}
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-wider border-b border-black pb-1 mb-2.5 text-black">
+                Elkészítés:
+              </h2>
+              <ol className="space-y-2 text-xs text-black">
+                {printRecipe.steps.map((st) => (
+                  <li key={st.stepNumber} className="flex items-start gap-2.5 leading-relaxed">
+                    <span className="font-bold shrink-0 w-5 h-5 rounded-full bg-stone-100 border border-stone-500 flex items-center justify-center text-[10px]">
+                      {st.stepNumber}
+                    </span>
+                    <div className="flex-1">
+                      <span>{st.instruction}</span>
+                      {st.durationMinutes && st.durationMinutes > 0 ? (
+                        <span className="ml-1 text-stone-600 font-semibold">({st.durationMinutes} perc)</span>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            {/* Notes / Tips */}
+            {printRecipe.notes && (
+              <div className="p-3 bg-stone-50 border border-stone-300 rounded text-xs text-stone-800">
+                <strong className="text-black block mb-0.5">Konyhai tipp / Megjegyzés:</strong>
+                {printRecipe.notes}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="mt-8 pt-3 border-t border-stone-400 flex items-center justify-between text-[10px] text-stone-500">
+            <span>Családi Receptkönyv</span>
+            <span>Nyomtatás ideje: {new Date().toLocaleDateString('hu-HU')}</span>
+          </div>
+        </div>
+      )}
 
       {/* Modern In-App Floating Toast Notification */}
       {toastMessage && (

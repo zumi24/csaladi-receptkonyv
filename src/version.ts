@@ -2,10 +2,30 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.7';
+export const APP_VERSION = 'v1.0.9';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.9',
+    title: 'Közvetlen & Megbízható Nyomtatási Motor (Iframe + Új Lap)',
+    features: [
+      'Garantált nyomtatási eljutás: közvetlen háttér-iframe és új lapos nyomtatási motor a böngészési blokkolások ellen',
+      'Választható gazdaságos (fotó nélküli) vagy ételfotós nyomtatás',
+      'Kizárólag a recept lényege kerül nyomtatásra: YouTube videók, szavazások, gombok automatikus elrejtése',
+      'Pipálható hozzávaló jelölőnégyzetek és lépések szerinti percek a papíron'
+    ]
+  },
+  {
+    version: 'v1.0.8',
+    title: 'Intelligens Nyomtatási Mód & Gazdaságos Opciók',
+    features: [
+      'Új interaktív nyomtatási párbeszédablak: rákérdezés fotóval vagy fotó nélkül (gazdaságos mód)',
+      'Tiszta, lényegretörő nyomtatási sablon (csak receptadatok, hozzávalók, lépések és konyhai tippek)',
+      'YouTube videók, gombok, szavazás és zavaró vezérlők automatikus elrejtése nyomtatáskor',
+      'Aktuális adagmérethez igazított hozzávaló-mennyiségek a kinyomtatott lapon'
+    ]
+  },
   {
     version: 'v1.0.7',
     title: 'Offline OCR Szkennelt PDF/Kép Motor & Intelligens Kulcsmentő',
