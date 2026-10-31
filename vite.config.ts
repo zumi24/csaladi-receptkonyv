@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
-import { handleExtractRecipeMiddleware } from './recipeExtractor';
+import { handleExtractRecipeMiddleware } from './recipeExtractor.ts';
 
 function recipeApiPlugin(): Plugin {
   return {

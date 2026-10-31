@@ -1947,19 +1947,19 @@ export default function App() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <a
                       href="/api/download-pi-package"
-                      download="recept_adatbazis_v1.0.1.zip"
+                      download="recept_adatbazis_v1.0.3.zip"
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>ZIP Letöltése (v1.0.1)</span>
+                      <span>ZIP Letöltése (v1.0.3)</span>
                     </a>
                     <a
                       href="/api/download-pi-tar"
-                      download="recept_adatbazis_v1.0.1.tar.gz"
+                      download="recept_adatbazis_v1.0.3.tar.gz"
                       className="px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>tar.gz (v1.0.1 Linuxhoz)</span>
+                      <span>tar.gz (v1.0.3 Linuxhoz)</span>
                     </a>
                   </div>
                 </div>

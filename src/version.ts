@@ -2,10 +2,19 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.2';
+export const APP_VERSION = 'v1.0.3';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.3',
+    title: 'Node.js 22 ESM Modulbetöltési Javítás',
+    features: [
+      'Kifejezett .ts kiterjesztés megadása az ES Modul importoknál a Node 22 futtatókörnyezethez',
+      'Hiba nélküli npm run preview és npm start indítás a Raspberry Pi-n',
+      'Digitális PDF szövegkinyerés és közvetlen Google Gemini API kulcs mentés'
+    ]
+  },
   {
     version: 'v1.0.2',
     title: 'Ingyenes Offline PDF Beolvasás & Ingyenes Gemini AI Beállítás',

@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
-import { extractRecipeCore } from './recipeExtractor';
+import { extractRecipeCore } from './recipeExtractor.ts';
 
 dotenv.config();
 
@@ -309,24 +309,24 @@ async function startServer() {
 
   // API to download the complete Raspberry Pi package as ZIP
   app.get('/api/download-pi-package', (_req, res) => {
-    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.2.zip');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.1.zip');
+    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.zip');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.2.zip');
     const finalPath = fs.existsSync(zipPath) ? zipPath : fallbackPath;
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A ZIP csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.2.zip');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.3.zip');
   });
 
   // API to download the complete Raspberry Pi package as tar.gz
   app.get('/api/download-pi-tar', (_req, res) => {
-    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.2.tar.gz');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.1.tar.gz');
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.2.tar.gz');
     const finalPath = fs.existsSync(tarPath) ? tarPath : fallbackPath;
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A tar.gz csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.2.tar.gz');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.3.tar.gz');
   });
 
   // API to save Gemini API key directly from UI to .env file
