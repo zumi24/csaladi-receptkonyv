@@ -159,6 +159,25 @@ export default function App() {
   // State for User Guide / Documentation modal
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
+  // Dynamic custom categories state
+  const defaultCategories = ['Főételek', 'Levesek', 'Desszertek', 'Péksütemények', 'Saláták'];
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem('csaladi_kategoriak');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error('Failed to parse categories', e);
+      }
+    }
+    return defaultCategories;
+  });
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isCategoryManageOpen, setIsCategoryManageOpen] = useState(false);
+  const [manageCategoryInput, setManageCategoryInput] = useState('');
+
   // Modern In-App Toast Notification (avoiding window.alert)
   const [toastMessage, setToastMessage] = useState<{ id: string; text: string; type: 'success' | 'info' | 'warning' } | null>(null);
 
@@ -379,11 +398,20 @@ export default function App() {
     localStorage.setItem('aktiv_csaladtag', currentMember);
   }, [currentMember]);
 
-  // Categories list
+  useEffect(() => {
+    localStorage.setItem('csaladi_kategoriak', JSON.stringify(customCategories));
+  }, [customCategories]);
+
+  // Combined list of all available categories
+  const allCategories = useMemo(() => {
+    const set = new Set([...customCategories, ...recipes.map((r) => r.category).filter(Boolean)]);
+    return Array.from(set);
+  }, [customCategories, recipes]);
+
+  // Categories list with 'Összes' for catalog filter bar
   const categories = useMemo(() => {
-    const set = new Set(recipes.map((r) => r.category));
-    return ['Összes', ...Array.from(set)];
-  }, [recipes]);
+    return ['Összes', ...allCategories];
+  }, [allCategories]);
 
   // Filtered recipes
   const filteredRecipes = useMemo(() => {
@@ -1086,6 +1114,19 @@ export default function App() {
                     {cat}
                   </button>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManageCategoryInput('');
+                    setIsCategoryManageOpen(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 shadow-2xs"
+                  title="Új kategóriák hozzáadása és kezelése"
+                >
+                  <Plus className="w-3.5 h-3.5 text-amber-700" />
+                  <span>+ Kategória</span>
+                </button>
               </div>
             </div>
 
@@ -2239,18 +2280,105 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-stone-700 mb-1">Kategória</label>
-                  <select
-                    value={editForm.category || 'Főételek'}
-                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none cursor-pointer"
-                  >
-                    <option value="Főételek">Főételek</option>
-                    <option value="Levesek">Levesek</option>
-                    <option value="Desszertek">Desszertek</option>
-                    <option value="Péksütemények">Péksütemények</option>
-                    <option value="Saláták">Saláták</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-stone-700">Kategória *</label>
+                    {!isAddingNewCategory && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewCategory(true);
+                          setNewCategoryName('');
+                        }}
+                        className="text-[11px] font-bold text-amber-700 hover:text-amber-800 hover:underline flex items-center gap-0.5 cursor-pointer"
+                        title="Új egyéni kategória létrehozása"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Új kategória</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddingNewCategory ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          placeholder="pl. Reggelik, Grill, Italok..."
+                          className="flex-1 px-3 py-1.5 bg-white border-2 border-amber-500 rounded-lg text-xs font-semibold focus:outline-none"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const trimmed = newCategoryName.trim();
+                              if (trimmed) {
+                                if (!customCategories.includes(trimmed)) {
+                                  setCustomCategories((prev) => [...prev, trimmed]);
+                                }
+                                setEditForm({ ...editForm, category: trimmed });
+                                setIsAddingNewCategory(false);
+                                setNewCategoryName('');
+                                showToast(`"${trimmed}" kategória hozzáadva!`, 'success');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const trimmed = newCategoryName.trim();
+                            if (!trimmed) {
+                              showToast('Kérlek írd be a kategória nevét!', 'warning');
+                              return;
+                            }
+                            if (!customCategories.includes(trimmed)) {
+                              setCustomCategories((prev) => [...prev, trimmed]);
+                            }
+                            setEditForm({ ...editForm, category: trimmed });
+                            setIsAddingNewCategory(false);
+                            setNewCategoryName('');
+                            showToast(`"${trimmed}" kategória hozzáadva!`, 'success');
+                          }}
+                          className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          OK
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewCategory(false);
+                            setNewCategoryName('');
+                          }}
+                          className="px-2 py-1.5 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      value={editForm.category || 'Főételek'}
+                      onChange={(e) => {
+                        if (e.target.value === '__ADD_NEW__') {
+                          setIsAddingNewCategory(true);
+                          setNewCategoryName('');
+                        } else {
+                          setEditForm({ ...editForm, category: e.target.value });
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none cursor-pointer font-medium text-stone-800 text-xs"
+                    >
+                      {allCategories.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      <option value="__ADD_NEW__" className="text-amber-700 font-bold">
+                        ➕ + Új kategória megadása...
+                      </option>
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -2567,6 +2695,11 @@ export default function App() {
                     dislikes: editForm.dislikes || []
                   };
 
+                  const savedCat = (fullRecipe.category || 'Főételek').trim();
+                  if (savedCat && !customCategories.includes(savedCat)) {
+                    setCustomCategories((prev) => [...prev, savedCat]);
+                  }
+
                   setRecipes((prev) => {
                     const exists = prev.some((r) => r.id === fullRecipe.id);
                     return exists ? prev.map((r) => (r.id === fullRecipe.id ? fullRecipe : r)) : [fullRecipe, ...prev];
@@ -2861,6 +2994,153 @@ export default function App() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Igen, végleges törlés</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* IN-APP CUSTOM CATEGORIES MANAGEMENT MODAL */}
+      {/* ========================================================================= */}
+      {isCategoryManageOpen && (
+        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-xs">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-stone-900">
+                    Saját Kategóriák Kezelése
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Hozz létre új kategóriákat és szűrj rájuk a recepttárban
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCategoryManageOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Add Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-stone-700">
+                Új kategória hozzáadása
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={manageCategoryInput}
+                  onChange={(e) => setManageCategoryInput(e.target.value)}
+                  placeholder="pl. Reggelik, Grill & Bogrács, Gyors vacsorák..."
+                  className="flex-1 px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600 font-medium"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const trimmed = manageCategoryInput.trim();
+                      if (trimmed) {
+                        if (allCategories.includes(trimmed)) {
+                          showToast('Ez a kategória már létezik!', 'warning');
+                        } else {
+                          setCustomCategories((prev) => [...prev, trimmed]);
+                          setSelectedCategory(trimmed);
+                          setManageCategoryInput('');
+                          showToast(`"${trimmed}" kategória sikeresen hozzáadva!`, 'success');
+                        }
+                      }
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const trimmed = manageCategoryInput.trim();
+                    if (!trimmed) {
+                      showToast('Kérlek írd be a kategória nevét!', 'warning');
+                      return;
+                    }
+                    if (allCategories.includes(trimmed)) {
+                      showToast('Ez a kategória már létezik!', 'warning');
+                      return;
+                    }
+                    setCustomCategories((prev) => [...prev, trimmed]);
+                    setSelectedCategory(trimmed);
+                    setManageCategoryInput('');
+                    showToast(`"${trimmed}" kategória sikeresen hozzáadva!`, 'success');
+                  }}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Hozzáadás</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Existing Categories List */}
+            <div className="space-y-2 pt-2 border-t border-stone-100">
+              <div className="text-xs font-bold text-stone-700">
+                Jelenlegi kategóriák ({allCategories.length} db):
+              </div>
+              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+                {allCategories.map((cat) => {
+                  const count = recipes.filter((r) => r.category === cat).length;
+                  const isDefault = defaultCategories.includes(cat);
+                  return (
+                    <div
+                      key={cat}
+                      className="px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 text-xs font-medium text-stone-800 flex items-center gap-2 group"
+                    >
+                      <span
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          setIsCategoryManageOpen(false);
+                        }}
+                        className="cursor-pointer hover:text-amber-700 hover:underline"
+                        title="Szűrés erre a kategóriára"
+                      >
+                        {cat}
+                      </span>
+                      <span className="text-[10px] bg-stone-200 text-stone-600 px-1.5 py-0.2 rounded-full tabular-nums">
+                        {count} db
+                      </span>
+                      {!isDefault && count === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomCategories((prev) => prev.filter((c) => c !== cat));
+                            if (selectedCategory === cat) setSelectedCategory('Összes');
+                            showToast(`"${cat}" kategória eltávolítva.`, 'info');
+                          }}
+                          className="text-stone-400 hover:text-rose-600 p-0.5 rounded cursor-pointer"
+                          title="Üres egyéni kategória törlése"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-stone-100 text-xs">
+              <span className="text-[11px] text-stone-500">
+                A kategóriák azonnal elmentődnek a memóriába.
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCategoryManageOpen(false)}
+                className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Kész
               </button>
             </div>
           </div>

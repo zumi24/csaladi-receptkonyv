@@ -2,7 +2,7 @@ import os
 import re
 import sqlite3
 import json
-from flask import Flask, redirect, render_template, request, session, url_for, jsonify, send_file
+from flask import Flask, redirect, render_template, request, session, url_for, jsonify, send_file, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 try:
@@ -212,11 +212,27 @@ def kijelentkezes():
 # FŐOLDAL & RECEPTEK MEGJELENÍTÉSE
 # ==============================================================================
 
+DIST_DIR = os.path.join(BASE_DIR, "dist")
+
 @app.route("/")
 def index():
+    # Ha létezik az új, modern React alkalmazás (dist mappa), közvetlenül azt szolgáljuk ki!
+    if os.path.exists(os.path.join(DIST_DIR, "index.html")):
+        return send_from_directory(DIST_DIR, "index.html")
+
     if "user_id" not in session:
         return redirect(url_for("bejelentkezes"))
+    return regi_fomenu()
 
+@app.route("/assets/<path:filename>")
+def serve_assets(filename):
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    if os.path.exists(os.path.join(assets_dir, filename)):
+        return send_from_directory(assets_dir, filename)
+    return "Asset nem található", 404
+
+@app.route("/regi")
+def regi_fomenu():
     conn = get_db_connection()
     kategoriak = conn.execute("SELECT * FROM kategoria").fetchall()
     szakacsok = conn.execute(
