@@ -206,28 +206,175 @@ export default function App() {
         payload.mimeType = importFile.mimeType;
       }
 
-      const res = await fetch('/api/extract-recipe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const responseText = await res.text();
       let data: any;
+      let res: Response | null = null;
+
       try {
-        data = JSON.parse(responseText);
-      } catch {
-        if (res.status === 413) {
-          throw new Error('A PDF fájl mérete túl nagy a szerver számára (maximum kb. 18-20 MB). Kérjük válassz kisebb fájlt vagy tömörítsd a PDF-et!');
+        res = await fetch('/api/extract-recipe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const responseText = await res.text();
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = null;
         }
-        if (res.status === 502 || res.status === 503 || res.status === 504) {
-          throw new Error('A szerver feldolgozása időtúllépésbe futott. Kérjük próbáld újra egy pillanat múlva, vagy tömörítsd a PDF-et!');
-        }
-        throw new Error(`A szerver válasza érvénytelen formátumú volt (HTTP ${res.status}: ${res.statusText || 'Hiba'}). Kérlek próbáld újra!`);
+      } catch (networkErr: any) {
+        console.warn('Backend extract request failed, checking client fallback:', networkErr.message);
       }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'A recept feldolgozása sikertelen volt.');
+      // If backend returned 404 or failed and type is URL, attempt client-side fallback
+      if ((!res || res.status === 404 || !data || !data.success) && importType === 'url') {
+        const targetUrl = importUrl.trim();
+        console.log(`[Client Fallback] Próbálkozás közvetlen kliensoldali beolvasással: ${targetUrl}`);
+        
+        const proxies = [
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+          `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`
+        ];
+
+        let fetchedHtml = '';
+        for (const proxyUrl of proxies) {
+          try {
+            const pRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
+            if (pRes.ok) {
+              const text = await pRes.text();
+              if (text && text.length > 200) {
+                fetchedHtml = text;
+                break;
+              }
+            }
+          } catch {}
+        }
+
+        if (fetchedHtml) {
+          try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(fetchedHtml, 'text/html');
+            const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+            
+            for (const script of Array.from(scripts)) {
+              try {
+                const parsed = JSON.parse(script.textContent || '{}');
+                const items = Array.isArray(parsed)
+                  ? parsed
+                  : (parsed['@graph'] && Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed]);
+
+                for (const item of items) {
+                  const type = item['@type'];
+                  if (type === 'Recipe' || (Array.isArray(type) && type.includes('Recipe'))) {
+                    const title = item.name || item.headline || doc.title || '';
+                    const rawIngredients = item.recipeIngredient || item.ingredients || [];
+                    const ingredients = Array.isArray(rawIngredients)
+                      ? rawIngredients.map((ing: any, idx: number) => {
+                          const ingStr = String(ing || '').trim();
+                          const m = ingStr.match(/^([\d.,\/\s]+)\s*(kg|dkg|g|ml|dl|l|liter|ek|tk|kávéskanál|evőkanál|csipet|db|gerezd|fej|csomag|tasak|szem|bögre|pohár|szelet|marék)?\s*(.*)$/i);
+                          if (m && m[3]) {
+                            return {
+                              id: `ing-${Date.now()}-${idx}`,
+                              name: m[3].trim().replace(/^[-–—]\s*/, ''),
+                              amount: parseFloat(m[1].replace(',', '.')) || 1,
+                              unit: m[2] || 'db'
+                            };
+                          }
+                          return {
+                            id: `ing-${Date.now()}-${idx}`,
+                            name: ingStr,
+                            amount: 1,
+                            unit: ingStr.toLowerCase().includes('ízlés szerint') ? 'ízlés szerint' : 'adag'
+                          };
+                        })
+                      : [];
+
+                    const rawSteps = item.recipeInstructions || [];
+                    const stepTexts: string[] = [];
+                    if (Array.isArray(rawSteps)) {
+                      for (const s of rawSteps) {
+                        if (typeof s === 'string') stepTexts.push(s);
+                        else if (s && typeof s === 'object') {
+                          if (s.itemListElement && Array.isArray(s.itemListElement)) {
+                            s.itemListElement.forEach((el: any) => stepTexts.push(el.text || el.name || ''));
+                          } else {
+                            stepTexts.push(s.text || s.name || s.description || '');
+                          }
+                        }
+                      }
+                    } else if (typeof rawSteps === 'string') {
+                      stepTexts.push(...rawSteps.split(/\n+/));
+                    }
+
+                    const steps = stepTexts.filter(Boolean).map((st, idx) => ({
+                      stepNumber: idx + 1,
+                      instruction: st.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+                    }));
+
+                    let imageUrl = '';
+                    if (typeof item.image === 'string') imageUrl = item.image;
+                    else if (Array.isArray(item.image) && item.image.length > 0) imageUrl = typeof item.image[0] === 'string' ? item.image[0] : item.image[0]?.url || '';
+
+                    if (title) {
+                      data = {
+                        success: true,
+                        recipe: {
+                          title: title.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"'),
+                          category: 'Főételek',
+                          description: item.description || '',
+                          prepTimeMinutes: 15,
+                          cookTimeMinutes: 30,
+                          servings: 4,
+                          difficulty: 'Könnyű',
+                          tags: ['Weboldalról', 'Családi'],
+                          ingredients: ingredients.length > 0 ? ingredients : [{ id: `ing-1`, name: 'Alapanyagok', amount: 1, unit: 'adag' }],
+                          steps: steps.length > 0 ? steps : [{ stepNumber: 1, instruction: 'Lásd a recept eredeti oldalát.' }],
+                          notes: `Forrás: ${targetUrl}`,
+                          imageUrl
+                        },
+                        extractedImages: imageUrl ? [imageUrl] : []
+                      };
+                      break;
+                    }
+                  }
+                }
+                if (data && data.success) break;
+              } catch {}
+            }
+          } catch (domErr) {
+            console.warn('DOMParser fallback warning:', domErr);
+          }
+        }
+      }
+
+      // If still no valid data, check text fallback or throw friendly error
+      if (!data || !data.success) {
+        if (importType === 'text' && importRawText.trim()) {
+          const lines = importRawText.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          data = {
+            success: true,
+            recipe: {
+              title: lines[0] || 'Beillesztett recept',
+              category: 'Főételek',
+              description: '',
+              prepTimeMinutes: 15,
+              cookTimeMinutes: 30,
+              servings: 4,
+              difficulty: 'Könnyű',
+              tags: ['Szövegből'],
+              ingredients: [{ id: `ing-1`, name: 'Összetevők a leírásban', amount: 1, unit: 'adag' }],
+              steps: lines.slice(1).map((l, i) => ({ stepNumber: i + 1, instruction: l })),
+              imageUrl: ''
+            },
+            extractedImages: []
+          };
+        } else {
+          const errStatus = res ? res.status : 0;
+          if (errStatus === 404) {
+            throw new Error('A szerver háttérfolyamata nem elérhető (HTTP 404). Kérjük a Raspberry Pi-n futtasd az "npm run build" majd "npm start" parancsot, vagy másold be közvetlenül a szöveget a "Szöveg" fülön!');
+          }
+          throw new Error(data?.error || `A recept feldolgozása sikertelen volt (Kód: ${errStatus || 'hálózati hiba'}).`);
+        }
       }
 
       const ext = data.recipe;
