@@ -192,9 +192,15 @@ async function startServer() {
     }
   }
 
-  const isAiStudio = process.env.AISTUDIO === 'true' || !!process.env.DEV_SERVER_PORT || process.cwd().includes('/app/applet');
-  const DEFAULT_PORT = isAiStudio ? 3000 : 5000;
-  const PORT = Number(process.env.PORT) || cliPort || DEFAULT_PORT;
+  // In AI Studio / preview container, the dev server must always run on port 3000.
+  // When running locally on Raspberry Pi or user's host, default to 5000 (or cliPort / process.env.PORT).
+  const isAiStudio = process.cwd().includes('/app/applet') || process.env.AISTUDIO === 'true' || !!process.env.DEV_SERVER_PORT;
+  let PORT = 3000;
+  if (isAiStudio) {
+    PORT = 3000;
+  } else {
+    PORT = cliPort || (process.env.PORT ? Number(process.env.PORT) : 5000);
+  }
 
   // Accept up to 100MB payloads
   app.use(express.json({ limit: '100mb' }));
@@ -309,24 +315,24 @@ async function startServer() {
 
   // API to download the complete Raspberry Pi package as ZIP
   app.get('/api/download-pi-package', (_req, res) => {
-    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.zip');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.zip');
-    const finalPath = fs.existsSync(zipPath) ? zipPath : fallbackPath;
+    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.zip');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.zip');
+    const finalPath = fs.existsSync(zipPath) ? zipPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.zip'));
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A ZIP csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.4.zip');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.5.zip');
   });
 
   // API to download the complete Raspberry Pi package as tar.gz
   app.get('/api/download-pi-tar', (_req, res) => {
-    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.tar.gz');
-    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.tar.gz');
-    const finalPath = fs.existsSync(tarPath) ? tarPath : fallbackPath;
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.5.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.4.tar.gz');
+    const finalPath = fs.existsSync(tarPath) ? tarPath : (fs.existsSync(fallbackPath) ? fallbackPath : path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.3.tar.gz'));
     if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A tar.gz csomag még nem áll rendelkezésre.');
     }
-    return res.download(finalPath, 'recept_adatbazis_v1.0.4.tar.gz');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.5.tar.gz');
   });
 
   // API to save Gemini API key directly from UI to .env file
@@ -387,7 +393,10 @@ async function startServer() {
   } else {
     console.log(`[Development] Vite dev szerver middleware csatolva`);
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

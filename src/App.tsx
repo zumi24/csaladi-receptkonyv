@@ -1978,19 +1978,19 @@ export default function App() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.4.zip')}
+                      onClick={() => downloadFileBlob('/api/download-pi-package', 'recept_adatbazis_v1.0.5.zip')}
                       className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>ZIP Letöltése (v1.0.4)</span>
+                      <span>ZIP Letöltése (v1.0.5)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.4.tar.gz')}
+                      onClick={() => downloadFileBlob('/api/download-pi-tar', 'recept_adatbazis_v1.0.5.tar.gz')}
                       className="px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>tar.gz (v1.0.4 Linuxhoz)</span>
+                      <span>tar.gz (v1.0.5 Linuxhoz)</span>
                     </button>
                   </div>
                 </div>

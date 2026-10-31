@@ -2,10 +2,20 @@
  * Családi Receptkönyv alkalmazás verzió- és kiadásinformációk
  * Itt központosítva kezelhető a verziószám a jövőbeli fejlesztések és nyomon követés érdekében.
  */
-export const APP_VERSION = 'v1.0.4';
+export const APP_VERSION = 'v1.0.5';
 export const APP_BUILD_NAME = 'Raspberry Pi Touch Kiadás';
 export const APP_RELEASE_DATE = '2025. május';
 export const APP_CHANGELOG = [
+  {
+    version: 'v1.0.5',
+    title: 'Szerver Port Fix & Fejlesztői Környezet Stabilitás',
+    features: [
+      'Dev szerver portkezelés javítása: biztos port 3000 kötés AI Studio környezetben az EADDRINUSE elkerülésére',
+      'Raspberry Pi 5000-es port prioritás megőrzése',
+      'Vite HMR websocket ütközések kiküszöbölése beágyazott Express szerverben',
+      'v1.0.5 frissített telepítőcsomagok generálása'
+    ]
+  },
   {
     version: 'v1.0.4',
     title: 'Biztonságos Iframe Blob Letöltés & 1-soros Pi Fix',
