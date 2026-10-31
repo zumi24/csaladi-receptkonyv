@@ -216,11 +216,136 @@ export function extractBasicHtmlRecipe(html: string, sourceUrl: string): any | n
   return null;
 }
 
-export async function extractRecipeCore(payload: { type: string; content: string; mimeType?: string }): Promise<any> {
-  const { type, content } = payload;
+// Intelligent Hungarian text parser for offline recipes and PDFs
+export function parseRecipeFromHungarianText(text: string): {
+  title: string;
+  category: string;
+  description: string;
+  prepTimeMinutes: number;
+  cookTimeMinutes: number;
+  servings: number;
+  difficulty: 'Könnyű' | 'Közepes' | 'Haladó';
+  tags: string[];
+  ingredients: Array<{ id: string; name: string; amount: number; unit: string }>;
+  steps: Array<{ stepNumber: number; instruction: string }>;
+} {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return {
+      title: 'Beolvasott recept',
+      category: 'Főételek',
+      description: '',
+      prepTimeMinutes: 15,
+      cookTimeMinutes: 30,
+      servings: 4,
+      difficulty: 'Közepes',
+      tags: ['PDF Beolvasás'],
+      ingredients: [],
+      steps: []
+    };
+  }
+
+  let title = '';
+  let category = 'Főételek';
+  const ingredients: Array<{ id: string; name: string; amount: number; unit: string }> = [];
+  const steps: Array<{ stepNumber: number; instruction: string }> = [];
+  let description = '';
+
+  let mode: 'header' | 'ingredients' | 'steps' = 'header';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lower = line.toLowerCase();
+    
+    if (!title && !lower.includes('hozzávaló') && !lower.includes('alapanyag') && !lower.includes('bevásárló') && !lower.includes('elkészítés') && line.length < 90) {
+      title = line.replace(/^[#*\-•\d.]+\s*/, '').trim();
+      continue;
+    }
+
+    if (lower.startsWith('hozzávaló') || lower.includes('alapanyag') || lower.includes('bevásárlólista') || lower.includes('ingredients')) {
+      mode = 'ingredients';
+      continue;
+    }
+    if (lower.startsWith('elkészítés') || lower.startsWith('leírás') || lower.startsWith('lépések') || lower.startsWith('recept') || lower.includes('instructions') || lower.includes('how to')) {
+      mode = 'steps';
+      continue;
+    }
+
+    const matchIng = line.match(/^[-*•\d.)\s]*([\d.,\/\s]+)\s*(kg|dkg|g|ml|dl|l|liter|ek|tk|kávéskanál|evőkanál|csipet|db|gerezd|fej|csomag|tasak|szem|bögre|pohár|szelet|marék)?\s*(.*)$/i);
+    const hasIngredientUnit = matchIng && (matchIng[2] || (matchIng[1] && matchIng[3]));
+
+    if (mode === 'ingredients' || (mode === 'header' && hasIngredientUnit)) {
+      if (matchIng && matchIng[3]) {
+        const numRaw = matchIng[1].replace(',', '.').trim();
+        const amount = parseFloat(numRaw) || 1;
+        const unit = matchIng[2] || 'db';
+        const name = matchIng[3].trim().replace(/^[-–—:]\s*/, '');
+        if (name && !name.toLowerCase().startsWith('elkészítés')) {
+          ingredients.push({
+            id: `ing-${Date.now()}-${ingredients.length}`,
+            name,
+            amount,
+            unit
+          });
+          mode = 'ingredients';
+          continue;
+        }
+      } else if (line.includes('ízlés szerint') || line.startsWith('-') || line.startsWith('•')) {
+        ingredients.push({
+          id: `ing-${Date.now()}-${ingredients.length}`,
+          name: line.replace(/^[-*•]\s*/, ''),
+          amount: 1,
+          unit: 'ízlés szerint'
+        });
+        mode = 'ingredients';
+        continue;
+      }
+    }
+
+    if (mode === 'steps' || (!hasIngredientUnit && ingredients.length > 0)) {
+      const cleanStep = line.replace(/^\d+[.)\s-]+/, '').trim();
+      if (cleanStep.length > 5) {
+        steps.push({
+          stepNumber: steps.length + 1,
+          instruction: cleanStep
+        });
+        mode = 'steps';
+      }
+    } else if (mode === 'header' && !description) {
+      description = line;
+    }
+  }
+
+  const fullContent = (title + ' ' + text).toLowerCase();
+  if (fullContent.includes('leves') || fullContent.includes('gulyás') || fullContent.includes('krémleves')) category = 'Levesek';
+  else if (fullContent.includes('torta') || fullContent.includes('sütemény') || fullContent.includes('muffin') || fullContent.includes('keksz') || fullContent.includes('piskóta') || fullContent.includes('palacsinta') || fullContent.includes('desszert')) category = 'Desszertek';
+  else if (fullContent.includes('kenyér') || fullContent.includes('kifli') || fullContent.includes('zsemle') || fullContent.includes('pogácsa') || fullContent.includes('kalács')) category = 'Péksütemények';
+  else if (fullContent.includes('saláta')) category = 'Saláták';
+
+  return {
+    title: title || 'Beolvasott recept',
+    category,
+    description: description.slice(0, 300),
+    prepTimeMinutes: 15,
+    cookTimeMinutes: 30,
+    servings: 4,
+    difficulty: 'Közepes',
+    tags: ['PDF Beolvasás', 'Családi'],
+    ingredients: ingredients.length > 0 ? ingredients : [{ id: `ing-1`, name: 'Összetevők (lásd a leírásban)', amount: 1, unit: 'adag' }],
+    steps: steps.length > 0 ? steps : [{ stepNumber: 1, instruction: text.slice(0, 500) }]
+  };
+}
+
+export async function extractRecipeCore(payload: { type: string; content: string; mimeType?: string; apiKey?: string }): Promise<any> {
+  const { type, content, apiKey } = payload;
   if (!content) {
     throw new Error('A bemeneti tartalom kötelező!');
   }
+
+  // Use dynamically provided apiKey or server-side env apiKey
+  const activeAi = (apiKey && apiKey.trim())
+    ? new GoogleGenAI({ apiKey: apiKey.trim() })
+    : ai;
 
   if (type === 'url') {
     let fetchedText = '';
@@ -248,7 +373,7 @@ export async function extractRecipeCore(payload: { type: string; content: string
     }
 
     // 2. Try OpenGraph / basic HTML fallback if AI is not available
-    if (!ai) {
+    if (!activeAi) {
       const basicRecipe = extractBasicHtmlRecipe(fetchedText, content);
       if (basicRecipe) {
         return {
@@ -257,7 +382,7 @@ export async function extractRecipeCore(payload: { type: string; content: string
           hasPdfImage: false
         };
       }
-      throw new Error('A megadott weboldal nem tartalmazott közvetlenül értelmezhető recept-adatot. AI-alapú elemzéshez adj meg GEMINI_API_KEY kulcsot a .env fájlban!');
+      throw new Error('A megadott weboldal nem tartalmazott közvetlenül értelmezhető recept-adatot. AI-alapú elemzéshez adj meg GEMINI_API_KEY kulcsot!');
     }
 
     // 3. Fallback to Gemini AI with clean HTML
@@ -266,7 +391,7 @@ export async function extractRecipeCore(payload: { type: string; content: string
     fetchedText = fetchedText.slice(0, 40000);
 
     const prompt = `Kérlek alakítsd át az alábbi weboldalt érvényes JSON receptté (title, category, description, prepTimeMinutes, cookTimeMinutes, servings, ingredients: [{name, amount, unit}], steps: [{stepNumber, instruction}], imageUrl).\nWebcím: ${content}\n\nTartalom:\n${fetchedText}`;
-    const response = await ai.models.generateContent({
+    const response = await activeAi.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [{ text: prompt }],
       config: { responseMimeType: 'application/json' }
@@ -276,32 +401,66 @@ export async function extractRecipeCore(payload: { type: string; content: string
     return { recipe: parsed, extractedImages: parsed.imageUrl ? [parsed.imageUrl] : [], hasPdfImage: false };
   }
 
-  if (type === 'text') {
-    if (!ai) {
-      // Simple text heuristic parser
-      const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const title = lines[0] || 'Beillesztett recept';
-      const steps = lines.slice(1).map((l, i) => ({ stepNumber: i + 1, instruction: l }));
+  if (type === 'pdf') {
+    // 1. Try local offline PDF text extraction (100% free, no API key needed!)
+    let extractedText = '';
+    try {
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+      const rawData = Buffer.from(cleanBase64, 'base64');
+      const uint8 = new Uint8Array(rawData);
+      const loadingTask = pdfjs.getDocument({ data: uint8 });
+      const pdfDoc = await loadingTask.promise;
+      for (let p = 1; p <= pdfDoc.numPages; p++) {
+        const page = await pdfDoc.getPage(p);
+        const textContent = await page.getTextContent();
+        const pageStr = textContent.items.map((it: any) => it.str || '').join(' ');
+        extractedText += pageStr + '\n';
+      }
+      extractedText = extractedText.trim();
+    } catch (pdfErr: any) {
+      console.warn('Local PDF extraction warning:', pdfErr.message);
+    }
+
+    if (extractedText && extractedText.length > 20) {
+      console.log(`[Offline PDF] Sikeres helyi PDF szövegkinyerés (${extractedText.length} karakter)`);
+      const parsedRecipe = parseRecipeFromHungarianText(extractedText);
       return {
-        recipe: {
-          title,
-          category: 'Főételek',
-          description: '',
-          prepTimeMinutes: 15,
-          cookTimeMinutes: 30,
-          servings: 4,
-          difficulty: 'Könnyű',
-          tags: ['Szövegből'],
-          ingredients: [{ id: `ing-${Date.now()}-1`, name: 'Hozzávalók a leírásban', amount: 1, unit: 'adag' }],
-          steps,
-          imageUrl: ''
-        },
+        recipe: parsedRecipe,
         extractedImages: [],
         hasPdfImage: false
       };
     }
 
-    const response = await ai.models.generateContent({
+    // 2. If it's a scanned PDF (image only) and Gemini is available:
+    if (activeAi) {
+      const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+      const response = await activeAi.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          { text: 'Olvasd le a csatolt szkennelt PDF-ből a receptet és konvertáld JSON formátumba (title, category, description, prepTimeMinutes, cookTimeMinutes, servings, ingredients: [{name, amount, unit}], steps: [{stepNumber, instruction}]).' },
+          { inlineData: { mimeType: 'application/pdf', data: cleanBase64 } }
+        ],
+        config: { responseMimeType: 'application/json' }
+      });
+      const parsed = JSON.parse(response.text || '{}');
+      return { recipe: parsed, extractedImages: [], hasPdfImage: false };
+    }
+
+    throw new Error('Ez a PDF egy szkennelt kép (nem tartalmaz szöveges réteget). A képi szkenneléshez Google Gemini API kulcs szükséges a felületen vagy a .env fájlban. A Google Gemini API 100%-ban INGYENES és bankkártya nélkül igényelhető az aistudio.google.com/apikey oldalon!');
+  }
+
+  if (type === 'text') {
+    if (!activeAi) {
+      const parsed = parseRecipeFromHungarianText(content);
+      return {
+        recipe: parsed,
+        extractedImages: [],
+        hasPdfImage: false
+      };
+    }
+
+    const response = await activeAi.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [{ text: `Konvertáld recept JSON-ra: ${content}` }],
       config: { responseMimeType: 'application/json' }
@@ -310,7 +469,24 @@ export async function extractRecipeCore(payload: { type: string; content: string
     return { recipe: parsed, extractedImages: [], hasPdfImage: false };
   }
 
-  throw new Error(`A(z) ${type} típushoz GEMINI_API_KEY kulcs beállítása szükséges a .env fájlban.`);
+  if (type === 'image') {
+    if (activeAi) {
+      const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+      const response = await activeAi.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          { text: 'Olvasd le a fotón lévő receptet és konvertáld JSON formátumba (title, category, description, prepTimeMinutes, cookTimeMinutes, servings, ingredients: [{name, amount, unit}], steps: [{stepNumber, instruction}]).' },
+          { inlineData: { mimeType: payload.mimeType || 'image/jpeg', data: cleanBase64 } }
+        ],
+        config: { responseMimeType: 'application/json' }
+      });
+      const parsed = JSON.parse(response.text || '{}');
+      return { recipe: parsed, extractedImages: [content], hasPdfImage: false };
+    }
+    throw new Error('A fényképek mesterséges intelligenciával történő beolvasásához ingyenes Google Gemini API kulcs szükséges (GEMINI_API_KEY). A kulcs 100% ingyenes az aistudio.google.com/apikey oldalon!');
+  }
+
+  throw new Error(`A(z) ${type} típus feldolgozása nem sikerült.`);
 }
 
 export function handleExtractRecipeMiddleware(req: IncomingMessage, res: ServerResponse): void {

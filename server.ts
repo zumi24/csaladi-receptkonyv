@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { extractRecipeCore } from './recipeExtractor';
 
 dotenv.config();
 
@@ -308,20 +309,50 @@ async function startServer() {
 
   // API to download the complete Raspberry Pi package as ZIP
   app.get('/api/download-pi-package', (_req, res) => {
-    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.1.zip');
-    if (!fs.existsSync(zipPath)) {
+    const zipPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.2.zip');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.1.zip');
+    const finalPath = fs.existsSync(zipPath) ? zipPath : fallbackPath;
+    if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A ZIP csomag még nem áll rendelkezésre.');
     }
-    return res.download(zipPath, 'recept_adatbazis_v1.0.1.zip');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.2.zip');
   });
 
   // API to download the complete Raspberry Pi package as tar.gz
   app.get('/api/download-pi-tar', (_req, res) => {
-    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.1.tar.gz');
-    if (!fs.existsSync(tarPath)) {
+    const tarPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.2.tar.gz');
+    const fallbackPath = path.resolve(PUBLIC_DIR, 'recept_adatbazis_v1.0.1.tar.gz');
+    const finalPath = fs.existsSync(tarPath) ? tarPath : fallbackPath;
+    if (!fs.existsSync(finalPath)) {
       return res.status(404).send('A tar.gz csomag még nem áll rendelkezésre.');
     }
-    return res.download(tarPath, 'recept_adatbazis_v1.0.1.tar.gz');
+    return res.download(finalPath, 'recept_adatbazis_v1.0.2.tar.gz');
+  });
+
+  // API to save Gemini API key directly from UI to .env file
+  app.post('/api/save-api-key', (req, res) => {
+    try {
+      const { apiKey } = req.body;
+      if (!apiKey || typeof apiKey !== 'string') {
+        return res.status(400).json({ error: 'Érvénytelen API kulcs formátum' });
+      }
+      const envPath = path.resolve(process.cwd(), '.env');
+      let envContent = '';
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf-8');
+      }
+      if (envContent.includes('GEMINI_API_KEY=')) {
+        envContent = envContent.replace(/GEMINI_API_KEY=.*/, `GEMINI_API_KEY=${apiKey.trim()}`);
+      } else {
+        envContent += `\nGEMINI_API_KEY=${apiKey.trim()}\n`;
+      }
+      fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf-8');
+      process.env.GEMINI_API_KEY = apiKey.trim();
+      console.log('✅ GEMINI_API_KEY sikeresen elmentve a .env fájlba!');
+      return res.json({ success: true, message: 'API kulcs sikeresen elmentve a Pi-re!' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   // ============================================================================
@@ -329,233 +360,16 @@ async function startServer() {
   // ============================================================================
   app.post('/api/extract-recipe', async (req, res) => {
     try {
-      const { type, content, mimeType } = req.body;
-      if (!content) {
-        return res.status(400).json({ error: 'Content is required' });
-      }
-
-      let promptText = `Te egy precíz kulináris receptkinyerő asszisztens vagy (hasonlóan a RecipeSage-hez).
-Elemezd a kapott forrást, és alakítsd át pontos, magyar nyelvű JSON recept objektummá a megadott sémának megfelelően.
-
-FONTOS SZABÁLYOK:
-1. A válasz KIZÁRÓLAG érvényes JSON legyen.
-2. A hozzávalókat bontsd szét: 'name' (hozzávaló neve, pl. 'vöröshagyma', 'finomliszt'), 'amount' (szám, pl. 500, 2, 0.5), 'unit' (mértékegység, pl. 'g', 'dkg', 'db', 'ml', 'dl', 'ek', 'tk', 'csipet').
-3. Az elkészítési lépéseket sorszámozott tömbbé ('steps') alakítsd: 'stepNumber', 'instruction', és ha az utasítás tartalmaz főzési/sütési időt, 'durationMinutes' számként.
-4. Ha a kategória nem egyértelmű, válaszd a legmegfelelőbbet ezek közül: 'Főételek', 'Levesek', 'Desszertek', 'Péksütemények', 'Saláták'.
-
-Kimeneti JSON séma:
-{
-  "title": "Recept címe",
-  "category": "Főételek" | "Levesek" | "Desszertek" | "Péksütemények" | "Saláták",
-  "description": "Rövid leírás vagy bevezető",
-  "prepTimeMinutes": 15,
-  "cookTimeMinutes": 30,
-  "servings": 4,
-  "difficulty": "Könnyű" | "Közepes" | "Haladó",
-  "tags": ["Családi", "Hagyományos"],
-  "ingredients": [
-    { "name": "Vöröshagyma", "amount": 2, "unit": "db" }
-  ],
-  "steps": [
-    { "stepNumber": 1, "instruction": "A hagymát finomra vágjuk...", "durationMinutes": 5 }
-  ],
-  "notes": "Tippek és megjegyzések ha vannak",
-  "imageUrl": "",
-  "videoUrl": ""
-}`;
-
-      let parts: any[] = [];
-      let primaryExtractedPhoto = '';
-      let extractedImages: string[] = [];
-
-      if (type === 'url') {
-        let fetchedText = '';
-        try {
-          const fetchRes = await fetch(content, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/json'
-            },
-            signal: AbortSignal.timeout(10000)
-          });
-          fetchedText = await fetchRes.text();
-        } catch (fetchErr: any) {
-          console.warn('URL fetch error, passing URL directly to model:', fetchErr.message);
-          fetchedText = `Webcím: ${content}`;
-        }
-
-        // Try direct Schema.org / JSON-LD recipe extraction first!
-        const schemaRecipe = tryExtractSchemaOrgRecipe(fetchedText, content);
-        if (schemaRecipe) {
-          console.log(`[Schema.org] Sikeres közvetlen recept kinyerés: "${schemaRecipe.title}" (${schemaRecipe.ingredients.length} hozzávaló, ${schemaRecipe.steps.length} lépés)`);
-          return res.json({
-            success: true,
-            recipe: schemaRecipe,
-            extractedImages: schemaRecipe.imageUrl ? [schemaRecipe.imageUrl] : [],
-            hasPdfImage: false
-          });
-        }
-
-        // Remove scripts and style tags to save tokens
-        fetchedText = fetchedText.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
-        fetchedText = fetchedText.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
-        fetchedText = fetchedText.slice(0, 45000); // take first 45k chars
-
-        parts.push({
-          text: `${promptText}\n\nForrás weboldal URL: ${content}\n\nA weboldal tartalma:\n${fetchedText}`
-        });
-      } else if (type === 'text') {
-        parts.push({
-          text: `${promptText}\n\nKinyerendő szöveg:\n${content}`
-        });
-      } else if (type === 'image' || type === 'pdf') {
-        const cleanBase64 = content.replace(/^data:([A-Za-z-+/]+);base64,/, '');
-
-        if (type === 'pdf') {
-          // Check inline size limit (Gemini API max inline data is 20MB)
-          const approximateByteSize = Math.round(cleanBase64.length * 0.75);
-          if (approximateByteSize > 18 * 1024 * 1024) {
-            return res.status(400).json({
-              success: false,
-              error: `A PDF fájl mérete (${(approximateByteSize / (1024 * 1024)).toFixed(1)} MB) túl nagy a közvetlen feldolgozáshoz (maximum 18 MB engedélyezett). Kérjük tömörítsd a PDF-et vagy töltsd fel a recept képét/szövegét!`
-            });
-          }
-          console.log(`[PDF Extraction] PDF sikeresen átadva a modellnek szöveg és receptstruktúra kinyeréséhez (${(approximateByteSize / (1024 * 1024)).toFixed(2)} MB).`);
-        } else if (type === 'image') {
-          // Direct uploaded image - save to /kepek to avoid giant base64 strings in DB
-          try {
-            const imgBuffer = Buffer.from(cleanBase64, 'base64');
-            const isPng = (mimeType || '').includes('png');
-            const ext = isPng ? 'png' : 'jpg';
-            const fileName = `foto_recept_${Date.now()}.${ext}`;
-            const publicFilePath = path.join(PUBLIC_KEPEK_DIR, fileName);
-            fs.writeFileSync(publicFilePath, imgBuffer);
-
-            if (fs.existsSync(PI_KEPEK_DIR)) {
-              fs.writeFileSync(path.join(PI_KEPEK_DIR, fileName), imgBuffer);
-            }
-            primaryExtractedPhoto = `/kepek/${fileName}`;
-            extractedImages = [primaryExtractedPhoto];
-          } catch {
-            primaryExtractedPhoto = content.startsWith('data:')
-              ? content
-              : `data:${mimeType || 'image/jpeg'};base64,${cleanBase64}`;
-            extractedImages = [primaryExtractedPhoto];
-          }
-        }
-
-        parts.push({
-          text: `${promptText}\n\nKérlek olvasd le a csatolt képről/dokumentumról a receptet és konvertáld a megadott JSON formátumra.`
-        });
-        parts.push({
-          inlineData: {
-            mimeType: mimeType || (type === 'pdf' ? 'application/pdf' : 'image/jpeg'),
-            data: cleanBase64
-          }
-        });
-      } else {
-        return res.status(400).json({ error: 'Invalid extraction type' });
-      }
-
-      // Check if AI is initialized (has GEMINI_API_KEY)
-      if (!ai) {
-        return res.status(400).json({
-          success: false,
-          error: type === 'url'
-            ? 'A megadott weboldal nem tartalmazott szabványos recept-adatot. AI-alapú intelligens értelmezéshez kérlek add meg a GEMINI_API_KEY kulcsot a .env fájlban!'
-            : 'A fényképek és PDF fájlok beolvasásához Google Gemini API kulcs szükséges a .env fájlban (GEMINI_API_KEY=...). A legtöbb weboldalról (pl. Nosalty, Mindmegette) a receptek URL alapján kulcs nélkül is automatikusan beolvashatók!'
-        });
-      }
-
-      // Robust Multi-Model Fallback & Retry mechanism for 503 / 429 transient spikes
-      const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
-      let responseText = '';
-      let lastError: any = null;
-
-      for (const modelName of modelsToTry) {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            console.log(`Extracting recipe with model ${modelName} (attempt ${attempt + 1})...`);
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: parts,
-              config: {
-                responseMimeType: 'application/json'
-              }
-            });
-            if (response.text) {
-              responseText = response.text;
-              break;
-            }
-          } catch (modelErr: any) {
-            lastError = modelErr;
-            const errStr = String(modelErr.message || '');
-            console.warn(`Model ${modelName} attempt ${attempt + 1} failed: ${errStr}`);
-            if (errStr.includes('503') || errStr.includes('429') || errStr.includes('high demand') || errStr.includes('UNAVAILABLE')) {
-              // Wait briefly before retrying or switching model
-              await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-            } else {
-              break; // Not a transient overload, try next model
-            }
-          }
-        }
-        if (responseText) break;
-      }
-
-      if (!responseText) {
-        throw lastError || new Error('A modell jelenleg túlterhelt, kérlek próbáld újra egy pillanat múlva!');
-      }
-      let parsedRecipe: any = {};
-      try {
-        parsedRecipe = JSON.parse(responseText);
-      } catch (jsonErr) {
-        // Match JSON block with regex if output was surrounded by markdown
-        const match = responseText.match(/\{[\s\S]*\}/);
-        if (match) {
-          parsedRecipe = JSON.parse(match[0]);
-        } else {
-          throw new Error('A modell válasza nem volt érvényes JSON formátum');
-        }
-      }
-
-      // Automatically incorporate the extracted photo into the recipe if found
-      if (!parsedRecipe.imageUrl && primaryExtractedPhoto) {
-        parsedRecipe.imageUrl = primaryExtractedPhoto;
-      }
-
-      // Add unique IDs to ingredients
-      if (Array.isArray(parsedRecipe.ingredients)) {
-        parsedRecipe.ingredients = parsedRecipe.ingredients.map((ing: any, idx: number) => ({
-          id: `ing-${Date.now()}-${idx}`,
-          name: ing.name || '',
-          amount: Number(ing.amount) || 1,
-          unit: ing.unit || 'adag'
-        }));
-      } else {
-        parsedRecipe.ingredients = [];
-      }
-
-      // Ensure steps structure
-      if (Array.isArray(parsedRecipe.steps)) {
-        parsedRecipe.steps = parsedRecipe.steps.map((st: any, idx: number) => ({
-          stepNumber: idx + 1,
-          instruction: typeof st === 'string' ? st : st.instruction || '',
-          durationMinutes: typeof st === 'object' ? Number(st.durationMinutes) || undefined : undefined
-        }));
-      } else {
-        parsedRecipe.steps = [];
-      }
-
+      const result = await extractRecipeCore(req.body);
       return res.json({
         success: true,
-        recipe: parsedRecipe,
-        extractedImages,
-        hasPdfImage: extractedImages.length > 0 && type === 'pdf'
+        ...result
       });
     } catch (err: any) {
       console.error('Extraction error:', err);
-      return res.status(500).json({
-        error: `Sikertelen kinyerés: ${err.message || 'Hiba történt a feldolgozás során'}`
+      return res.status(400).json({
+        success: false,
+        error: err.message || 'Hiba történt a recept feldolgozása során.'
       });
     }
   });

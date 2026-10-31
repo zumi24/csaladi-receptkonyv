@@ -188,12 +188,47 @@ export default function App() {
     }, 4500);
   };
 
+  // Gemini AI Free API Key management
+  const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('csaladi_gemini_key') || '');
+  const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+  const [isApiKeyBoxOpen, setIsApiKeyBoxOpen] = useState(false);
+
+  const handleSaveApiKey = async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) {
+      showToast('Kérlek írd vagy másold be az API kulcsot!', 'warning');
+      return;
+    }
+    setIsSavingApiKey(true);
+    try {
+      localStorage.setItem('csaladi_gemini_key', trimmed);
+      const res = await fetch('/api/save-api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: trimmed })
+      });
+      if (res.ok) {
+        showToast('✅ Google Gemini API kulcs elmentve a Raspberry Pi-re!', 'success');
+        setExtractError(null);
+      } else {
+        showToast('Kulcs a böngészőben elmentve! Most már működik a beolvasás.', 'success');
+      }
+    } catch {
+      showToast('Kulcs a böngészőben elmentve! Most már működik a beolvasás.', 'success');
+    } finally {
+      setIsSavingApiKey(false);
+    }
+  };
+
   const handleExtractRecipe = async () => {
     setIsExtracting(true);
     setExtractError(null);
 
     try {
       let payload: any = { type: importType };
+      if (apiKeyInput.trim()) {
+        payload.apiKey = apiKeyInput.trim();
+      }
       if (importType === 'url') {
         if (!importUrl.trim()) throw new Error('Kérlek adj meg egy érvényes recept URL-t!');
         payload.content = importUrl.trim();
@@ -3077,6 +3112,77 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* Free Gemini AI Key Configuration Panel */}
+              <div className="pt-3 border-t border-stone-200/80">
+                <button
+                  type="button"
+                  onClick={() => setIsApiKeyBoxOpen(!isApiKeyBoxOpen)}
+                  className="w-full py-2 px-3 bg-stone-50 hover:bg-amber-50/60 border border-stone-200 rounded-xl flex items-center justify-between transition-colors cursor-pointer text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-xs font-bold text-stone-800">
+                      Ingyenes Google Gemini AI beállítása (Képekhez & Szkennelt PDF-hez)
+                    </span>
+                    {apiKeyInput.trim() && (
+                      <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md">
+                        Aktív
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform ${isApiKeyBoxOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isApiKeyBoxOpen && (
+                  <div className="mt-2.5 p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-3 text-xs animate-in fade-in duration-150">
+                    <div className="space-y-1">
+                      <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                        <span>A Google Gemini AI teljesen INGYENES!</span>
+                      </div>
+                      <p className="text-[11px] text-stone-600 leading-relaxed">
+                        A webes URL-ek és a digitális szöveges PDF-ek <strong>100% ingyen és kulcs nélkül is működnek</strong>!
+                        A szakácskönyv fotókhoz és kézzel fotózott receptekhez a Google ingyenes kulcsa használható (nincs bankkártya, havi több ezer ingyenes beolvasás).
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <a
+                        href="https://aistudio.google.com/apikey"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition-colors shadow-2xs"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Ingyenes API kulcs igénylése (1 kattintás a Google fiókoddal)</span>
+                      </a>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-[11px] font-semibold text-stone-700">
+                        Másold be ide az ingyenes AI kulcsot (AIzaSy...):
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          placeholder="AIzaSy..."
+                          className="flex-1 px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-mono focus:outline-none focus:border-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveApiKey}
+                          disabled={isSavingApiKey}
+                          className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shrink-0 shadow-2xs"
+                        >
+                          {isSavingApiKey ? 'Mentés...' : 'Mentés a Pi-re'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Action Buttons */}
